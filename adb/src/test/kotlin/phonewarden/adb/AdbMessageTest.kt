@@ -40,4 +40,46 @@ class AdbMessageTest {
     fun `rejects a payload shorter than the declared length`() {
         assertFailsWith<ProtocolException> { AdbMessage.decode(cnxnBytes.copyOf(cnxnBytes.size - 1)) }
     }
+
+    @Test
+    fun `OPEN is sent as its ASCII letters and survives a round trip`() {
+        val wire = AdbMessage(Command.OPEN, 7, 9, byteArrayOf(1, 2)).encode()
+        assertContentEquals("OPEN".toByteArray(), wire.copyOfRange(0, 4))
+        assertEquals(Command.OPEN, AdbMessage.decode(wire).command)
+    }
+
+    @Test
+    fun `OKAY is sent as its ASCII letters and survives a round trip`() {
+        val wire = AdbMessage(Command.OKAY, 7, 9, byteArrayOf(1, 2)).encode()
+        assertContentEquals("OKAY".toByteArray(), wire.copyOfRange(0, 4))
+        assertEquals(Command.OKAY, AdbMessage.decode(wire).command)
+    }
+
+    @Test
+    fun `WRTE is sent as its ASCII letters and survives a round trip`() {
+        val wire = AdbMessage(Command.WRTE, 7, 9, byteArrayOf(1, 2)).encode()
+        assertContentEquals("WRTE".toByteArray(), wire.copyOfRange(0, 4))
+        assertEquals(Command.WRTE, AdbMessage.decode(wire).command)
+    }
+
+    @Test
+    fun `CLSE is sent as its ASCII letters and survives a round trip`() {
+        val wire = AdbMessage(Command.CLSE, 7, 9, byteArrayOf(1, 2)).encode()
+        assertContentEquals("CLSE".toByteArray(), wire.copyOfRange(0, 4))
+        assertEquals(Command.CLSE, AdbMessage.decode(wire).command)
+    }
+
+    @Test
+    fun `AUTH is sent as its ASCII letters and survives a round trip`() {
+        val wire = AdbMessage(Command.AUTH, 7, 9, byteArrayOf(1, 2)).encode()
+        assertContentEquals("AUTH".toByteArray(), wire.copyOfRange(0, 4))
+        assertEquals(Command.AUTH, AdbMessage.decode(wire).command)
+    }
+
+    @Test
+    fun `STLS is sent as its ASCII letters and survives a round trip`() {
+        val wire = AdbMessage(Command.STLS, 7, 9, byteArrayOf(1, 2)).encode()
+        assertContentEquals("STLS".toByteArray(), wire.copyOfRange(0, 4))
+        assertEquals(Command.STLS, AdbMessage.decode(wire).command)
+    }
 }

@@ -4,7 +4,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /** ADB wire commands; the value is the 4 ASCII letters read as a little-endian int. */
-enum class Command(val value: Int) { CNXN(0x4e584e43) }
+enum class Command(val value: Int) { CNXN(0x4e584e43), OPEN(0x4e45504f), OKAY(0x59414b4f), WRTE(0x45545257), CLSE(0x45534c43), AUTH(0x48545541), STLS(0x534c5453) }
 
 class AdbMessage(val command: Command, val arg0: Int, val arg1: Int, val payload: ByteArray) {
     fun encode(): ByteArray = ByteBuffer.allocate(HEADER + payload.size).order(ByteOrder.LITTLE_ENDIAN)
