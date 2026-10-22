@@ -5,3 +5,4 @@ build/
 .kotlin/
 local.properties
 .DS_Store
+graphify-out/
