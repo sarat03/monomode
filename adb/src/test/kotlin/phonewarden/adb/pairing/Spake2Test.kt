@@ -3,6 +3,7 @@ package phonewarden.adb.pairing
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotEquals
 
 /** Expected values come from BoringSSL (spake25519.cc comments, tools/spake2-vectors/vectors.txt). */
 class Spake2Test {
@@ -50,6 +51,23 @@ class Spake2Test {
     @Test
     fun `derives adb's AES-128-GCM key from the shared key`() {
         assertEquals("d7fbf98a9da9e4153e082b87cf8572be", Spake2.aesKey(KEY.unhex()).hex())
+    }
+
+    @Test
+    fun `private key is 64 random bytes reduced mod L then multiplied by 8`() {
+        // expected values computed independently in Python: (int.from_bytes(b, 'little') % L) * 8
+        assertEquals("08" + "00".repeat(31), Spake2.privateKeyFrom(byteArrayOf(1) + ByteArray(63)).hex())
+        assertEquals("0078e0241a8f30203d9a2c443bdd70802ef3adbf909e6377eed184e1db08ca1c",
+            Spake2.privateKeyFrom(ByteArray(64) { 0xff.toByte() }).hex())
+    }
+
+    @Test
+    fun `parties with fresh random keys agree only when the passwords match`() {
+        val alice = Spake2.Party(Spake2.Role.ALICE, PW)
+        val bob = Spake2.Party(Spake2.Role.BOB, PW)
+        val eve = Spake2.Party(Spake2.Role.BOB, "4f5a0147".unhex())
+        assertEquals(alice.sharedKey(bob.message).hex(), bob.sharedKey(alice.message).hex())
+        assertNotEquals(alice.sharedKey(eve.message).hex(), eve.sharedKey(alice.message).hex())
     }
 
     companion object {

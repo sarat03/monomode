@@ -1,6 +1,7 @@
 package phonewarden.adb.pairing
 
 import java.security.MessageDigest
+import java.security.SecureRandom
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
@@ -21,6 +22,12 @@ object Spake2 {
 
     enum class Role { ALICE, BOB }
 
+    /** Like BoringSSL: reduce mod L, then ×8 so the peer's small-order component is cleared. */
+    fun privateKeyFrom(random64: ByteArray): ByteArray {
+        require(random64.size == 64) { "need 64 random bytes" }
+        return le32((leInt(random64) % L).shiftLeft(3))
+    }
+
     /** HKDF-SHA256 (RFC 5869), empty salt, adb's info string, 16 bytes: one expand block is enough. */
     fun aesKey(sharedKey: ByteArray): ByteArray {
         val mac = Mac.getInstance("HmacSHA256")
@@ -35,7 +42,11 @@ object Spake2 {
     private val SERVER = "adb pair server\u0000".toByteArray()
 
     /** Alice is the pairing client (us), Bob is adbd. */
-    class Party(val role: Role, password: ByteArray, private val privateKey: ByteArray) {
+    class Party(
+        val role: Role,
+        password: ByteArray,
+        private val privateKey: ByteArray = privateKeyFrom(ByteArray(64).also(SecureRandom()::nextBytes)),
+    ) {
         private val pwHash = MessageDigest.getInstance("SHA-512").digest(password)
         private val pwScalar = passwordScalar(password)
 
