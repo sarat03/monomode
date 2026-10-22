@@ -3,7 +3,7 @@
 Security model: list files are data, never commands. Every package name is
 validated against PKG_RE, and adb is invoked with an argv list (no shell).
 """
-import json, re, subprocess
+import ipaddress, json, re, subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -104,6 +104,45 @@ def restore(adb, record):
     for pkg in _load(record)["disabled"]:
         if PKG_RE.match(pkg):
             adb(["pm", "enable", pkg])
+
+
+def _addr(hexaddr):
+    ip, port = hexaddr.split(":")
+    raw = b"".join(bytes.fromhex(ip[i:i + 8])[::-1] for i in range(0, len(ip), 8))
+    a = ipaddress.ip_address(raw)
+    a = getattr(a, "ipv4_mapped", None) or a
+    return a, int(port, 16)
+
+
+def network(adb):
+    """TCP sockets from /proc/net (readable by the adb shell user, no root).
+    listening: open to the network; inbound: someone connected to one of those;
+    outbound: connections the phone made. ponytail: TCP only, UDP when needed."""
+    owners = {}
+    for line in adb(["pm", "list", "packages", "-U"]).splitlines():
+        if line.startswith("package:") and " uid:" in line:
+            pkg, uid = line[8:].split(" uid:")
+            owners.setdefault(int(uid.split(",")[0]), []).append(pkg)
+    socks = []
+    for f in ("/proc/net/tcp", "/proc/net/tcp6"):
+        for line in adb(["cat", f]).splitlines()[1:]:
+            col = line.split()
+            if len(col) < 8:
+                continue
+            (lip, lport), (rip, rport), uid = _addr(col[1]), _addr(col[2]), int(col[7])
+            socks.append({"state": col[3], "lip": lip, "lport": lport, "local": f"{lip}:{lport}",
+                          "remote": f"{rip}:{rport}", "uid": uid,
+                          "app": ",".join(owners.get(uid, [])) or f"system(uid {uid})"})
+    listening = [s for s in socks if s["state"] == "0A" and not s["lip"].is_loopback]
+    ports = {s["lport"] for s in listening}
+    est = [s for s in socks if s["state"] == "01" and not s["lip"].is_loopback]
+    return {
+        "listening": listening,
+        "inbound": [s for s in est if s["lport"] in ports],
+        "outbound": [s for s in est if s["lport"] not in ports],
+        # ponytail: 5555 or shell-owned listener; Wireless debugging picks random ports, owned by shell (uid 2000)
+        "adb_exposed": any(s["lport"] == 5555 or s["uid"] == 2000 for s in listening),
+    }
 
 
 def drift(adb, record):

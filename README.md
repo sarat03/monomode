@@ -1,4 +1,4 @@
-# cleanyourphone
+# PhoneWarden
 
 Debloat and repurpose Android phones over ADB. Disables (never uninstalls), keeps a restore record, refuses protected packages, verifies the phone still works after every batch, and flags packages an update re-enabled.
 

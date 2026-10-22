@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues live in GitHub Issues for this repo, via the `gh` CLI (remote not created yet). See `docs/agents/issue-tracker.md`.
+Issues live in GitHub Issues for this repo, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
