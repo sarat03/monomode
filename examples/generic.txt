@@ -1,0 +1,7 @@
+# Starter list. Verify each on your own phone first.
+com.facebook.appmanager|caution   # Facebook preinstall helper
+com.facebook.services|caution
+com.facebook.system|caution
+com.google.android.apps.tachyon   # Meet/Duo
+com.google.android.videos         # Play Movies
+com.google.android.music          # Play Music
