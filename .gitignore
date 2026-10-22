@@ -4,3 +4,4 @@ __pycache__/
 build/
 .kotlin/
 local.properties
+.DS_Store
