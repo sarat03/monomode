@@ -1,2 +1,5 @@
 records/
 __pycache__/
+.gradle/
+build/
+.kotlin/
