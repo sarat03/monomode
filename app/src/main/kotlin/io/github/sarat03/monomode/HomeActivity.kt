@@ -208,7 +208,6 @@ class HomeActivity : ComponentActivity() {
     }
 }
 
-val Profile.label get() = name.lowercase().replace('_', '-').replaceFirstChar { it.uppercase() }
 
 /** Settings > Appearance; "system" follows the phone's light or dark setting. */
 object Appearance {

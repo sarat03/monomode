@@ -20,6 +20,8 @@ android {
         release {
             isMinifyEnabled = true // R8: smaller, faster app
             isShrinkResources = true
+            // phones are ARM; Conscrypt's x86 libraries (6 MB) only serve emulators, which run the debug build
+            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
             // shortcut: debug key so it installs over dev builds, use a real key before publishing
             signingConfig = signingConfigs.getByName("debug")
@@ -41,7 +43,7 @@ dependencies {
 
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended") // icons that show each screen's purpose; R8 drops the unused ones
+    implementation("androidx.compose.material:material-icons-core") // core icons; the few extra ones are in AppIcons.kt
     implementation("androidx.activity:activity-compose:1.12.4")
 
     androidTestImplementation("androidx.test:runner:1.6.2")

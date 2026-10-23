@@ -72,7 +72,7 @@ fun plan(sh: Shell, entries: List<Entry>, maxRisk: Risk = Risk.SAFE, allowProtec
 }
 
 /** Home, dialer and keyboard all still resolve. */
-fun healthy(sh: Shell): Boolean {
+internal fun healthy(sh: Shell): Boolean {
     val home = sh.run(listOf("cmd", "package", "resolve-activity", "--brief", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.HOME"))
     val dial = sh.run(listOf("cmd", "package", "resolve-activity", "--brief", "-a", "android.intent.action.DIAL"))
     val ime = sh.run(listOf("settings", "get", "secure", "default_input_method")).trim()
@@ -97,7 +97,7 @@ private fun readEntries(record: File): Map<String, Method> =
     }
 
 /** Packages we disabled (not removed). */
-fun readRecord(record: File): List<String> = readEntries(record).filterValues { it == Method.DISABLE }.keys.toList()
+internal fun readRecord(record: File): List<String> = readEntries(record).filterValues { it == Method.DISABLE }.keys.toList()
 
 private fun writeRecord(record: File, entries: Map<String, Method>) {
     record.parentFile?.mkdirs()
@@ -137,7 +137,7 @@ fun apply(sh: Shell, p: Plan, record: File, dryRun: Boolean = true, batch: Int =
 }
 
 /** What MonoMode uninstalled or disabled, and how, for the restore list. */
-fun recorded(record: File): Map<String, Method> = readEntries(record)
+internal fun recorded(record: File): Map<String, Method> = readEntries(record)
 
 /** Brings back [only] (default: everything) and keeps the rest in the record; deletes the record once empty. */
 fun restore(sh: Shell, record: File, only: Set<String>? = null) {
@@ -151,14 +151,14 @@ fun restore(sh: Shell, record: File, only: Set<String>? = null) {
 }
 
 /** Packages we disabled that are enabled again (usually after an OTA). */
-fun drift(sh: Shell, record: File): List<String> {
+internal fun drift(sh: Shell, record: File): List<String> {
     val installed = sh.pkgs()
     val disabled = sh.pkgs("-d")
     return readRecord(record).filter { it in installed && it !in disabled }
 }
 
 /** Every enabled app not covered by a list, so the owner can pick any of them; protected apps and [self] are left out. */
-fun otherApps(sh: Shell, listed: Set<String>, self: String): List<String> =
+internal fun otherApps(sh: Shell, listed: Set<String>, self: String): List<String> =
     sh.pkgs("-e").filter { it !in listed && it !in PROTECTED && it != self && !it.startsWith("$self.") && !isOverlay(it) }.sorted()
 
 // shortcut: by name; overlays only recolour or reshape the system, they are not apps. Read the apk flag if one slips through.

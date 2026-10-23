@@ -14,6 +14,6 @@ fun pin(sh: Shell, component: String) {
     sh.run(listOf("am", "task", "lock", task))
 }
 
-fun unpin(sh: Shell) {
+internal fun unpin(sh: Shell) {
     sh.run(listOf("am", "task", "lock", "stop"))
 }

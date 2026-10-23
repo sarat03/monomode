@@ -10,16 +10,17 @@ import java.net.InetAddress
 import monomode.adb.AdbConnection
 import monomode.engine.DeviceFacts
 import monomode.engine.Finding
+import monomode.engine.Link
 import monomode.engine.Shell
 import monomode.engine.access
 import monomode.engine.findings
 import monomode.engine.network
 
 /** One connection to this phone's adbd, from "Wireless debugging is on" to "switched off and verified". */
-class Session private constructor(private val transport: TlsAdbTransport, private val conn: AdbConnection, val port: Int) : Closeable {
-    val shell: Shell = conn.asShell()
+class Session private constructor(private val ctx: Context, private val transport: TlsAdbTransport, private val conn: AdbConnection, val port: Int) : Closeable, Link {
+    override val shell: Shell = conn.asShell()
 
-    fun check(ctx: Context): List<Finding> = findings(
+    override fun check(): List<Finding> = findings(
         network(shell),
         access(shell).let { a -> a.copy(outsidePlayStore = a.outsidePlayStore.filterNot { it.first.startsWith(ctx.packageName) }) }, // not ourselves
         DeviceFacts(DeviceChecks.deviceAdmins(ctx), DeviceChecks.userCertificates(), DeviceChecks.vpnActive(ctx)),
@@ -27,7 +28,7 @@ class Session private constructor(private val transport: TlsAdbTransport, privat
     )
 
     /** Switches Wireless debugging off over this connection, then verifies from the app side. True when verified off. */
-    fun finish(ctx: Context): Boolean {
+    override fun finish(): Boolean {
         conn.disableWirelessDebugging()
         close()
         Thread.sleep(1000) // adbd closes its listener asynchronously
@@ -49,7 +50,7 @@ class Session private constructor(private val transport: TlsAdbTransport, privat
                 var t: TlsAdbTransport? = null
                 try {
                     t = TlsAdbTransport(InetAddress.getLoopbackAddress(), port, AdbKey.getOrCreate())
-                    return Session(t, AdbConnection(t).apply { connect() }, port)
+                    return Session(ctx.applicationContext, t, AdbConnection(t).apply { connect() }, port)
                 } catch (e: Exception) {
                     t?.close(); last = e
                 }
