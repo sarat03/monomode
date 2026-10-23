@@ -110,8 +110,10 @@ class HomeActivity : ComponentActivity() {
         homePressed = false
     }
 
-    private fun open(pkg: String) = packageManager.getLaunchIntentForPackage(pkg)?.let(::startActivity)
-    private fun openPhoneWarden() = startActivity(Intent(this, MainActivity::class.java))
+    // each app in its own task, like any launcher: Home clears this screen's task, and anything started
+    // inside it would be closed too (PhoneWarden's screen closing ends the session and turns off Wireless debugging)
+    private fun open(pkg: String) = packageManager.getLaunchIntentForPackage(pkg)?.let { startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    private fun openPhoneWarden() = startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 
     private fun battery(): Int =
         registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
@@ -141,7 +143,7 @@ class HomeActivity : ComponentActivity() {
                 // a book outline, like the cover slot on a Kobo or Kindle home screen
                 Box(Modifier.size(56.dp, 80.dp).border(1.5.dp, ink))
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Continue reading", color = ink, fontFamily = serif, fontSize = 26.sp)
+                    Text("Continue reading", color = ink, fontFamily = serif, fontSize = 22.sp, maxLines = 1)
                     Text(main.label, color = ink, fontFamily = serif, fontSize = 18.sp)
                 }
             }

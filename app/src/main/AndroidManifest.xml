@@ -25,11 +25,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <!-- home screen only while a mode sets it with set-home-activity; launchMode keeps one copy -->
+        <!-- home screen only while a mode sets it with set-home-activity; launchMode keeps one copy; own affinity so
+             PhoneWarden opened from it gets its own task, which Home does not clear (that ended the session) -->
         <activity
             android:name=".HomeActivity"
             android:exported="true"
             android:launchMode="singleTask"
+            android:taskAffinity="io.github.sarat03.phonewarden.home"
             android:theme="@android:style/Theme.Material.Light.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

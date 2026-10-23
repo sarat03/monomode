@@ -253,7 +253,7 @@ class MainActivity : ComponentActivity() {
         Card(colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant), modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Wireless debugging is on", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                TextButton({ finish(s) }, enabled = busy == null) { Text("Finish") }
+                TextButton({ finish(s) }, enabled = busy == null) { Text("Turn off") }
             }
         }
     }
