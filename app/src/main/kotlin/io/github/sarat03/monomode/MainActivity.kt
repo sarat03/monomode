@@ -304,7 +304,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         SettingRow("About", "MonoMode ${packageManager.getPackageInfo(packageName, 0).versionName}. Open source, MIT licence.") {
-            OutlinedButton({ startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/sarat03/phonewarden"))) }) { Text("Source code") }
+            OutlinedButton({ startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/sarat03/monomode"))) }) { Text("Source code") }
         }
     }
 
