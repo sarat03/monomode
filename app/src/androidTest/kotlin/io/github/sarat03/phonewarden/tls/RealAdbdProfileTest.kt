@@ -19,7 +19,14 @@ import phonewarden.engine.restoreProfile
 /** Release gate for profiles on a real device. Skipped unless -e connectPort is passed. */
 @RunWith(AndroidJUnit4::class)
 class RealAdbdProfileTest {
-    private fun snapshot(sh: Shell) = listOf("global", "secure").associateWith { sh.run(listOf("settings", "list", it)) }
+    /**
+     * The profile's own keys plus the side effects seen on real devices (ringer, battery saver sticky).
+     * Not the whole settings list: a freshly booted emulator keeps changing unrelated keys on its own.
+     */
+    private fun snapshot(sh: Shell, profile: Profile): Map<String, String> =
+        (profile.changes.filter { it.ns != "dnd" }.map { it.ns to it.key } +
+            listOf("global" to "zen_mode", "global" to "mode_ringer", "global" to "low_power", "global" to "low_power_sticky"))
+            .associate { (ns, key) -> "$ns $key" to sh.run(listOf("settings", "get", ns, key)).trim() }
 
     private fun roundTrip(profile: Profile) {
         val port = InstrumentationRegistry.getArguments().getString("connectPort")?.toInt()
@@ -28,15 +35,11 @@ class RealAdbdProfileTest {
 
         TlsAdbTransport(InetAddress.getLoopbackAddress(), port!!, AdbKey.getOrCreate()).use {
             val sh = AdbConnection(it).apply { connect() }.asShell()
-            val before = snapshot(sh)
+            val before = snapshot(sh, profile)
             applyProfile(sh, profile, record)
-            assertNotEquals(before, snapshot(sh))
+            assertNotEquals(before, snapshot(sh, profile))
             restoreProfile(sh, record)
-            val after = snapshot(sh)
-            for (ns in before.keys) {
-                val b = before.getValue(ns).lines().toSet(); val a = after.getValue(ns).lines().toSet()
-                assertEquals(emptySet(), (b - a) + (a - b), "$ns: before ${b - a}, after ${a - b}")
-            }
+            assertEquals(before, snapshot(sh, profile))
         }
     }
 
