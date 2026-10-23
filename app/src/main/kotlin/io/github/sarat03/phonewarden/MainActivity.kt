@@ -599,6 +599,12 @@ class MainActivity : ComponentActivity() {
         }
         if (on == profile) Text("Turn the mode off to change these.", Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.bodyMedium)
         if ("Own home screen" !in off) HomePicker(profile)
+        if (profile == Profile.KIOSK && realmeGestures()) Text(
+            // checked on the Realme XT: a swipe never reaches a third-party home screen
+            "On this phone, swiping up goes to realme's own home screen and swiping up and holding opens recent apps, " +
+                "so a swipe leaves Kiosk. To keep one app on screen, use Pin an app.",
+            Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         if (profile == Profile.KIOSK) PinPicker(s, on == profile, askPin = "Ask for PIN to unpin" !in off)
     }
 
@@ -637,6 +643,9 @@ class MainActivity : ComponentActivity() {
      * Gesture navigation per Android's navigation_mode (2), or per realme/Oppo's own switch
      * (hide_navigationbar_enable > 0), which they use instead: there navigation_mode stays 0.
      */
+    /** realme/Oppo gesture navigation: their launcher handles the swipes, whatever home screen is set. */
+    private fun realmeGestures() = Settings.Secure.getInt(contentResolver, "hide_navigationbar_enable", 0) > 0
+
     private fun usesGestures() = Settings.Secure.getInt(contentResolver, "navigation_mode", 0) == 2 ||
         Settings.Secure.getInt(contentResolver, "hide_navigationbar_enable", 0) > 0
 
