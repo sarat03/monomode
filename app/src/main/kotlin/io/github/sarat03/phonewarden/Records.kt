@@ -8,7 +8,8 @@ import java.io.File
 /** Restore records live in app storage; a copy goes to Downloads so it survives uninstalling the app. */
 object Records {
     fun debloat(ctx: Context) = File(ctx.filesDir, "debloat-record.txt")
-    fun mode(ctx: Context) = File(ctx.filesDir, "mode-record.txt")
+    /** Previous settings while a mode is on; kept inside the app, deleted when the mode is turned off. */
+    fun mode(ctx: Context, p: phonewarden.engine.Profile) = File(ctx.filesDir, "mode-${p.name}.txt")
 
     /** Copies [record] to Downloads/PhoneWarden; no storage permission needed on Android 10+. Returns the display path. */
     fun copyToDownloads(ctx: Context, record: File): String {

@@ -10,7 +10,7 @@ class FindingsTest {
         Socket(state, InetAddress.getByName("0.0.0.0"), port, "0.0.0.0:$port", remote, uid, app)
 
     private val quiet = NetworkReport(emptyList(), emptyList(), emptyList(), adbExposed = false)
-    private val noAccess = AccessReport(emptyList(), emptyList(), emptyList())
+    private val noAccess = AccessReport(emptyList(), emptyList(), emptyList(), emptySet())
     private val nothing = DeviceFacts(emptyList(), emptyList(), vpnActive = false)
 
     @Test fun `our own wireless debugging listener is not a finding`() {
@@ -26,7 +26,7 @@ class FindingsTest {
 
     @Test fun `each kind of exposure becomes a finding to look at`() {
         val net = NetworkReport(listOf(sock(8080, 10050, "com.share.app")), listOf(sock(8080, 10050, "com.share.app", "192.168.1.35:54321", "01")), emptyList(), false)
-        val access = AccessReport(listOf("com.tool.reader"), listOf("com.chat.app"), listOf("com.sideloaded.app" to null))
+        val access = AccessReport(listOf("com.tool.reader"), listOf("com.chat.app"), listOf("com.sideloaded.app" to null), emptySet())
         val dev = DeviceFacts(listOf("com.mdm.agent"), listOf("CN=Corp Proxy CA"), vpnActive = true)
         val looks = findings(net, access, dev, ownAdbPort = 0).filter { it.level == Level.LOOK }.map { it.title }
         assertEquals(8, looks.size, looks.toString())
@@ -40,10 +40,20 @@ class FindingsTest {
 
     @Test fun `never says hacked, safe or secure`() {
         val net = NetworkReport(listOf(sock(5555, 2000, "x")), listOf(sock(5555, 2000, "x", "1.2.3.4:5", "01")), listOf(sock(4000, 10077, "com.chat.app", "8.8.8.8:443", "01")), true)
-        val all = findings(net, AccessReport(listOf("a.b"), listOf("c.d"), listOf("e.f" to "g.h")), DeviceFacts(listOf("i.j"), listOf("CN=x"), true), 0) +
+        val all = findings(net, AccessReport(listOf("a.b"), listOf("c.d"), listOf("e.f" to "g.h"), emptySet()), DeviceFacts(listOf("i.j"), listOf("CN=x"), true), 0) +
             findings(quiet, noAccess, nothing, 0)
         for (f in all) for (word in listOf("hack", "safe", "secure", "virus", "malware")) {
             assertTrue(word !in (f.title + " " + f.detail).lowercase(), "'$word' in $f")
         }
+    }
+
+    @Test fun `built-in apps talking to the internet are not listed`() {
+        val net = NetworkReport(emptyList(), emptyList(), listOf(
+            sock(4000, 10010, "com.google.android.gsf,com.google.android.gms", "1.2.3.4:5228", "01"),
+            sock(4001, 1000, "system(uid 1000)", "1.2.3.4:443", "01"),
+            sock(4002, 10077, "com.chat.app", "8.8.8.8:443", "01"),
+        ), false)
+        val access = AccessReport(emptyList(), emptyList(), emptyList(), setOf("com.google.android.gsf", "com.google.android.gms"))
+        assertEquals(listOf("com.chat.app is talking to the internet"), findings(net, access, nothing, 0).map { it.title })
     }
 }

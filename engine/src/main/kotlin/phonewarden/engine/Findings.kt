@@ -38,7 +38,9 @@ fun findings(net: NetworkReport, access: AccessReport, dev: DeviceFacts, ownAdbP
     if (dev.vpnActive)
         look("A VPN is on", "All traffic goes through the VPN app. Fine if you set it up; otherwise check Settings > Network > VPN.")
 
-    for ((app, conns) in net.outbound.groupBy { it.app })
+    // built-in apps (Play services, keyboard, system uids) always talk to the internet; listing them is noise
+    fun builtIn(app: String) = app.startsWith("system(") || app.split(",").all { it in access.system }
+    for ((app, conns) in net.outbound.filterNot { builtIn(it.app) }.groupBy { it.app })
         out += Finding(Level.INFO, "$app is talking to the internet", "${conns.size} open connection${if (conns.size == 1) "" else "s"}: ${conns.joinToString { it.remote }}.")
     if (out.isEmpty())
         out += Finding(Level.INFO, "Nothing stood out", "None of the things this check looks for turned up. It looks at network ports, special app access, certificates, VPN and where apps came from.")

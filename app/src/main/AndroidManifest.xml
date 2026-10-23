@@ -8,6 +8,14 @@
     <!-- The pairing code is typed into a notification reply. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Names of home-screen apps for the kiosk pin picker; no broad package visibility needed. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="false"
         android:label="PhoneWarden"

@@ -24,6 +24,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Text
@@ -31,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,7 +48,10 @@ import phonewarden.engine.Profile
 import phonewarden.engine.Risk
 import phonewarden.engine.apply
 import phonewarden.engine.applyProfile
+import phonewarden.engine.launchableApps
 import phonewarden.engine.parseList
+import phonewarden.engine.pin
+import phonewarden.engine.unpin
 import phonewarden.engine.plan
 import phonewarden.engine.restore
 import phonewarden.engine.restoreProfile
@@ -64,6 +69,8 @@ class MainActivity : ComponentActivity() {
         var results by mutableStateOf<List<Finding>?>(null)
         var cleanup by mutableStateOf<Pair<List<Entry>, Plan>?>(null)
         val selected = mutableStateListOf<String>()
+        /** The mode that is on, mirrored from its record file so the screen updates. */
+        var activeMode by mutableStateOf<Profile?>(null)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,6 +82,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         paired = Pairing.isPaired(this)
         wirelessOn = Session.isWirelessDebuggingOn(this)
+        activeMode = Profile.entries.firstOrNull { Records.mode(this, it).exists() }
     }
 
     override fun onDestroy() {
@@ -227,30 +235,60 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun ModesTab(s: Session) {
-        val active = Records.mode(this).exists()
-        Text("A mode changes a few settings for one job. PhoneWarden saves your current settings first and Restore puts them back exactly.")
-        ModeCard("Kiosk", "Screen stays on while charging, screen pinning available, notifications muted (alarms still ring). Pair with Clean up to remove distractions.", Profile.KIOSK, s, active)
-        ModeCard("E-reader", "Grayscale screen, no animations, notifications muted, battery saver on. For reading, we recommend KOReader (free, on F-Droid).", Profile.E_READER, s, active)
-        if (active) Button({
-            run("Restoring your settings…") {
-                restoreProfile(s.shell, Records.mode(applicationContext))
-                message = "Your settings are back as they were."
-            }
-        }, enabled = busy == null) { Text("Restore my settings") }
+        val on = activeMode
+        Text("A mode changes a few settings for one job. Turning it off puts your own settings back exactly as they were.")
+        ModeCard("Kiosk", "Screen stays on while charging, notifications muted (alarms still ring), and one app pinned to the screen. Use Clean up too to remove distractions.", Profile.KIOSK, s, on)
+        ModeCard("E-reader", "Grayscale screen, no animations, notifications muted, battery saver on. For reading, we recommend KOReader (free, on F-Droid).", Profile.E_READER, s, on)
+        if (on == Profile.KIOSK) PinPicker(s)
     }
 
     @Composable
-    private fun ModeCard(name: String, what: String, profile: Profile, s: Session, active: Boolean) = Card {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(name, style = MaterialTheme.typography.titleMedium)
-            Text(what)
-            OutlinedButton({
-                run("Applying $name mode…") {
-                    applyProfile(s.shell, profile, Records.mode(applicationContext))
-                    message = "$name mode is on. Restore record saved to ${Records.copyToDownloads(applicationContext, Records.mode(applicationContext))}."
+    private fun ModeCard(name: String, what: String, profile: Profile, s: Session, on: Profile?) = Card {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(name, style = MaterialTheme.typography.titleMedium)
+                Text(what)
+                if (on != null && on != profile) Text("Turn off ${on.name.lowercase().replace('_', '-')} mode first.", style = MaterialTheme.typography.bodySmall)
+            }
+            Switch(on == profile, { turnOn ->
+                val record = Records.mode(applicationContext, profile)
+                if (turnOn) run("Turning on $name mode…") {
+                    applyProfile(s.shell, profile, record)
+                    activeMode = profile
+                    message = "$name mode is on."
+                } else run("Turning off $name mode…") {
+                    if (profile == Profile.KIOSK) unpin(s.shell)
+                    restoreProfile(s.shell, record)
+                    activeMode = null
+                    message = "$name mode is off. Your settings are back as they were."
                 }
-            }, enabled = busy == null && !active) { Text("Turn on $name mode") }
+            }, enabled = busy == null && (on == null || on == profile))
         }
+    }
+
+    /** Pinning hides PhoneWarden, so it is the last step: pin, then switch Wireless debugging off. */
+    @Composable
+    private fun PinPicker(s: Session) {
+        var apps by remember { mutableStateOf<List<Pair<String, String>>?>(null) }
+        Text("Pin an app", style = MaterialTheme.typography.titleMedium)
+        Text("The app fills the screen and stays there. To unpin later, hold Back and Overview together (or swipe up and hold, with gesture navigation).")
+        val list = apps
+        if (list == null) OutlinedButton({
+            run("Listing apps…") {
+                apps = launchableApps(s.shell).filterNot { it.startsWith(packageName) }
+                    .map { c -> c to runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(c.substringBefore("/"), 0)).toString() }.getOrDefault(c.substringBefore("/")) }
+                    .sortedBy { it.second.lowercase() }
+            }
+        }, enabled = busy == null) { Text("Choose an app to pin") }
+        else for ((component, label) in list) OutlinedButton({
+            run("Pinning $label and switching off Wireless debugging…") {
+                pin(s.shell, component)
+                val off = s.finish(applicationContext)
+                session = null; results = null; cleanup = null
+                wirelessOn = Session.isWirelessDebuggingOn(applicationContext)
+                message = if (off) "$label is pinned. Wireless debugging is off (checked)." else "$label is pinned. Wireless debugging may still be on: turn it off in Developer options."
+            }
+        }, Modifier.fillMaxWidth(), enabled = busy == null) { Text(label) }
     }
 
     @Composable
