@@ -41,7 +41,7 @@ dependencies {
 
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-core") // bottom bar icons; R8 drops the unused ones
+    implementation("androidx.compose.material:material-icons-extended") // icons that show each screen's purpose; R8 drops the unused ones
     implementation("androidx.activity:activity-compose:1.12.4")
 
     androidTestImplementation("androidx.test:runner:1.6.2")

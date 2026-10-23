@@ -22,8 +22,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.automirrored.outlined.List
+import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.outlined.CleaningServices
+import androidx.compose.material.icons.outlined.ToggleOn
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.background
@@ -199,11 +202,17 @@ class MainActivity : ComponentActivity() {
 
     // own task, so opening MonoMode again brings back MonoMode, not Settings
     // the fragment_args_key extras make Settings scroll to and flash Wireless debugging (AOSP and realme UI)
-    private fun openDeveloperOptions() = startActivity(
-        Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    // Developer options still hidden: About phone instead, where Build number is tapped 7 times to show them;
+    // a phone without either screen gets plain Settings
+    private fun openDeveloperOptions() {
+        val dev = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
             .putExtra(":settings:fragment_args_key", "toggle_adb_wireless")
             .putExtra(":settings:show_fragment_args", Bundle().apply { putString(":settings:fragment_args_key", "toggle_adb_wireless") })
-    )
+        for (i in listOf(if (devOptionsOn()) dev else Intent(Settings.ACTION_DEVICE_INFO_SETTINGS), Intent(Settings.ACTION_SETTINGS)))
+            if (runCatching { startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess) return
+    }
+
+    private fun devOptionsOn() = Settings.Global.getInt(contentResolver, Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) == 1
 
     @Composable
     private fun Screen() {
@@ -226,18 +235,20 @@ class MainActivity : ComponentActivity() {
     private fun PairScreen() = Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         AppHeader()
         Text("Set up once", style = MaterialTheme.typography.headlineSmall)
-        Text("MonoMode talks to this phone over Wireless debugging. Pair it once; after that it connects by itself.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Steps(
-            "Turn on Developer options if you have not (Settings > About phone > tap Build number 7 times).",
-            "In Developer options, turn on Wireless debugging and open it.",
-            "Tap \"Pair device with pairing code\".",
-            "Pull down the MonoMode notification and type the 6-digit code into it.",
-        )
+        Text("Pair once over Wireless debugging. After that MonoMode connects by itself.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val dev = devOptionsOn()
+        // the first step only while Developer options are hidden; the button then opens About phone for it
+        Steps(*listOfNotNull(
+            if (dev) null else "In About phone, tap Build number 7 times.",
+            "In Developer options, turn on Wireless debugging.",
+            "Tap Pair device with pairing code.",
+            "Type the code into the MonoMode notification.",
+        ).toTypedArray())
         Button({
             if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 0)
             Pairing.prompt(this@MainActivity)
             openDeveloperOptions()
-        }, Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Start pairing") }
+        }, Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text(if (dev) "Start pairing" else "Open About phone") }
     }
 
     @Composable
@@ -245,11 +256,14 @@ class MainActivity : ComponentActivity() {
         AppHeader()
         Hero(
             neutralTone(), if (wirelessOn) Icons.Outlined.CheckCircle else Icons.Outlined.Info,
-            if (wirelessOn) "Ready to check" else "Not connected",
-            if (wirelessOn) "MonoMode connects to this phone only, and switches Wireless debugging off when you finish."
-            else "Turn on Wireless debugging, then come back. MonoMode checks the phone straight away and switches it off again when you finish.",
+            if (wirelessOn) "Ready" else "Not connected",
+            if (wirelessOn) "Connecting to this phone." else "Turn on Wireless debugging, then come back.",
         )
-        if (!wirelessOn) Button(::openDeveloperOptions, Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text("Open Developer options") }
+        if (!wirelessOn) Button(::openDeveloperOptions, Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
+            Text(if (devOptionsOn()) "Open Developer options" else "Open About phone")
+        }
+        if (!wirelessOn && !devOptionsOn()) Text("Developer options are hidden. In About phone, tap Build number 7 times.",
+            Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         // Retry looks again for Wireless debugging, then connects and checks; only needed while it is off or after a failure,
         // otherwise the app connects by itself
         if (!wirelessOn || message != null) OutlinedButton({
@@ -277,8 +291,8 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun SessionScreen(s: Session) = when (tab) {
-        Page.CHECK -> Paged("Check") { CheckTab(s) }
-        Page.CLEAN -> Paged("Clean up", bottom = cleanupBar(s)) { CleanupTab(s) }
+        Page.CHECK -> Paged("Safety check") { CheckTab(s) }
+        Page.CLEAN -> Paged("Unused apps", bottom = cleanupBar(s)) { CleanupTab(s) }
         Page.MODES -> openMode?.let { p -> Paged(p.label, back = { openMode = null }) { ModePage(p, s) } } ?: Paged("Modes") { ModesTab() }
         else -> Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) { HomeTab(s) }
     }
@@ -321,7 +335,7 @@ class MainActivity : ComponentActivity() {
     private fun SettingsPage() {
         Section("Connection")
         SettingRow("Pairing", if (paired) "This phone is paired with MonoMode." else "Not paired yet.") {
-            if (paired) OutlinedButton({ Pairing.forget(applicationContext); paired = false; session?.let { s -> thread { runCatching { s.close() } } }; session = null; tab = Page.HOME; toast = "Pairing forgotten. Pair again to continue." },
+            if (paired) OutlinedButton({ Pairing.forget(applicationContext); paired = false; session?.let { s -> thread { runCatching { s.close() } } }; session = null; tab = Page.HOME },
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Forget and pair again") }
         }
         Section("Appearance")
@@ -334,7 +348,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         Section("Backups")
-        SettingRow("Restore lists", "Each clean up saves a copy of its restore list in Downloads/MonoMode, so apps can be brought back even after reinstalling MonoMode.")
+        SettingRow("Restore lists", "A copy of what was removed is saved in Downloads/MonoMode.")
         Section("About")
         SettingRow("MonoMode", "MonoMode ${packageManager.getPackageInfo(packageName, 0).versionName}. Open source, MIT licence.") {
             OutlinedButton({ startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/sarat03/monomode"))) }) { Text("Source code") }
@@ -354,7 +368,7 @@ class MainActivity : ComponentActivity() {
         val off = s.finish(applicationContext)
         session = null; results = null; cleanup = null
         wirelessOn = Session.isWirelessDebuggingOn(applicationContext)
-        if (off) toast = "Wireless debugging is off" else message = "Wireless debugging may still be on. Turn it off in Developer options."
+        if (!off) message = "Wireless debugging may still be on. Turn it off in Developer options."
     }
 
     /** One answer first, then a row per area with its state; the way to finish stays in sight. */
@@ -374,7 +388,7 @@ class MainActivity : ComponentActivity() {
                     Modifier.semantics { heading() },
                     style = MaterialTheme.typography.headlineMedium,
                 )
-                Text(if (r == null) "Run a check to see what can reach this phone." else "Checked just now. The check only reads; it changes nothing.", style = MaterialTheme.typography.bodyLarge)
+                Text(if (r == null) "See what can reach this phone." else "Checked just now. Nothing was changed.", style = MaterialTheme.typography.bodyLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button({ run("Checking…") { results = s.check(applicationContext) } }, enabled = busy == null,
                         colors = ButtonDefaults.buttonColors(fg, bg)) { Text(if (r == null) "Check" else "Check again") }
@@ -382,9 +396,9 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        HomeRow(Icons.Outlined.Search, "Check", if (r == null) "Not run yet" else if (look == 0) "Nothing to look at" else "$look to look at") { tab = Page.CHECK }
-        HomeRow(Icons.Outlined.Delete, "Clean up", if (restoreItems.isEmpty()) "Nothing removed" else "${restoreItems.size} removed or disabled") { tab = Page.CLEAN }
-        HomeRow(Icons.Outlined.Lock, "Modes", activeMode?.let { "${it.label} is on" } ?: "None on") { tab = Page.MODES }
+        HomeRow(Icons.Outlined.Shield, "Safety check", if (r == null) "Not run yet" else if (look == 0) "Nothing to look at" else "$look to look at") { tab = Page.CHECK }
+        HomeRow(Icons.Outlined.CleaningServices, "Unused apps", if (restoreItems.isEmpty()) "Nothing removed" else "${restoreItems.size} removed or disabled") { tab = Page.CLEAN }
+        HomeRow(Icons.Outlined.ToggleOn, "Modes", activeMode?.let { "${it.label} is on" } ?: "None on") { tab = Page.MODES }
         val w = warnTone()
         Card(colors = CardDefaults.cardColors(w.bg, w.fg), modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -417,7 +431,7 @@ class MainActivity : ComponentActivity() {
         Hero(
             tone, if (r != null && look == 0) Icons.Outlined.CheckCircle else Icons.Outlined.Info,
             when { r == null -> "Not checked yet"; look == 0 -> "Nothing to look at"; else -> "$look thing${if (look == 1) "" else "s"} to look at" },
-            if (r == null) "What can reach this phone, and which apps have special access. Read-only." else if (look == 0) "Checked just now. The check only reads; it changes nothing." else "Everything else looks normal. The check only reads; it changes nothing.",
+            if (r == null) "Read-only. Nothing is changed." else if (look == 0) "Checked just now. Nothing was changed." else "Everything else looks normal.",
         ) {
             Button({ run("Checking…") { results = s.check(applicationContext) } }, enabled = busy == null, colors = ButtonDefaults.buttonColors(tone.fg, tone.bg)) {
                 Text(if (r == null) "Check" else "Check again")
@@ -483,7 +497,6 @@ class MainActivity : ComponentActivity() {
                     debloat.restore(s.shell, restorePick.toSet())
                     restorePick.clear(); cleanup = null
                     restoreItems = debloat.removed
-                    toast = "$n app${if (n == 1) " is" else "s are"} back"
                 }
             }, Modifier.fillMaxWidth().heightIn(min = 56.dp), enabled = busy == null && restorePick.isNotEmpty()) { Text("Restore ${restorePick.size}") } }
         }
@@ -503,7 +516,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun CleanupTab(s: Session) {
-        Text("Remove apps you don't use. Everything can be restored.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Remove apps you don't use. You can bring them back.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(cleanFilter == 0, { cleanFilter = 0 }, { Text("Apps") })
             FilterChip(cleanFilter == 1, { cleanFilter = 1 }, { Text("Background") }, enabled = cleanup != null)
@@ -532,7 +545,7 @@ class MainActivity : ComponentActivity() {
                 singleLine = true, shape = RoundedCornerShape(28.dp))
             val withIcon = launcherPkgs
             if (cleanFilter == 1) {
-                Text("Parts of apps and of Android that run in the background and have no screen you can open. Many are needed by the phone; leave them unless you know what one does.",
+                Text("Many are needed by the phone. Leave the ones you don't know.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 PickGroup(others.filterNot { it.first in withIcon })
             } else {
@@ -540,8 +553,7 @@ class MainActivity : ComponentActivity() {
                     others.filter { it.first in withIcon })
                 if (p.already.isNotEmpty()) Text("Already off: ${p.already.size}", Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text("Only remove apps you recognise. Android's core apps are not listed, and the check after each batch undoes anything that breaks Home, calls or the keyboard. " +
-                "Uninstall keeps a copy on the phone, so Restore brings it back; Disable leaves it installed but switched off.",
+            Text("Core apps are hidden. If a batch breaks Home, calls or the keyboard, it is undone.",
                 Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -565,7 +577,7 @@ class MainActivity : ComponentActivity() {
         val done = restoreItems
         if (done.isEmpty()) return Text("Nothing removed yet.", Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Apps MonoMode removed. Bring any of them back; nothing was deleted.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Nothing was deleted.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             TextButton({ restorePick.clear(); restorePick += done.keys }, enabled = busy == null) { Text("Select all") }
         }
         for ((method, title) in listOf(Method.REMOVE to "Uninstalled", Method.DISABLE to "Disabled")) {
@@ -613,7 +625,6 @@ class MainActivity : ComponentActivity() {
         try {
             debloat.remove(s.shell, selected.toList(), method)
             Records.copyToDownloads(applicationContext, record)
-            toast = "${if (method == Method.REMOVE) "Uninstalled" else "Disabled"} ${selected.size} app${if (selected.size == 1) "" else "s"}. Restore list saved in Downloads."
             selected.clear()
         } catch (e: HealthException) {
             message = "Stopped: Home, phone or keyboard stopped working after a batch, so that batch was undone. Earlier batches stay uninstalled or disabled; Restore lists them."
@@ -627,16 +638,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private val Profile.what get() = when (this) {
-        Profile.KIOSK -> "A few apps on a simple home screen, or one app pinned. Muting still lets alarms ring."
-        Profile.E_READER -> "A paper-like home screen that opens your reading app. KOReader and ReadEra are good free readers."
+        Profile.KIOSK -> "Only the apps you choose."
+        Profile.E_READER -> "A calm, grey screen for reading."
     }
-    private val Profile.icon get() = when (this) { Profile.KIOSK -> Icons.Outlined.Home; Profile.E_READER -> Icons.AutoMirrored.Outlined.List }
+    private val Profile.icon get() = when (this) { Profile.KIOSK -> Icons.Outlined.GridView; Profile.E_READER -> Icons.AutoMirrored.Outlined.MenuBook }
 
     /** One card per mode with its state; a card opens the mode's own page. */
     @Composable
     private fun ModesTab() {
         val on = activeMode
-        Text("A mode changes a few settings for one job. Turning it off puts your own settings back exactly as they were.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("One mode at a time. Turning it off restores your settings.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         for (p in Profile.entries) Panel(Modifier.fillMaxWidth().clickable { openMode = p }) {
             Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Box(Modifier.size(48.dp).clip(MaterialTheme.shapes.medium).background(if (p == on) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
@@ -662,15 +673,15 @@ class MainActivity : ComponentActivity() {
         Hero(
             if (on == profile) safeTone() else neutralTone(), profile.icon,
             if (on == profile) "$name is on" else "$name is off",
-            if (on == profile) "Your own settings are saved and come back when you turn it off."
+            if (on == profile) "Your settings come back when you turn it off."
             else if (on != null) "Turn off ${on.label} first. One mode at a time." else profile.what,
         ) {
             val t = if (on == profile) safeTone() else neutralTone()
             if (on == profile) Button({
-                run("Turning off $name mode…") { modes.turnOff(s.shell); activeMode = modes.active; toast = "$name mode is off. Your settings are back." }
+                run("Turning off $name mode…") { modes.turnOff(s.shell); activeMode = modes.active }
             }, enabled = busy == null, colors = ButtonDefaults.buttonColors(t.fg, t.bg)) { Text("Turn off") }
             else Button({
-                run("Turning on $name mode…") { modes.turnOn(s.shell, profile); activeMode = modes.active; toast = "$name mode is on" }
+                run("Turning on $name mode…") { modes.turnOn(s.shell, profile); activeMode = modes.active }
             }, enabled = busy == null && on == null) { Text("Turn on") }
         }
         Section("What changes")
@@ -693,8 +704,7 @@ class MainActivity : ComponentActivity() {
             Section("Pin one app")
             if (realmeGestures()) Text(
                 // checked on the Realme XT: a swipe never reaches a third-party home screen
-                "On this phone, swiping up goes to realme's own home screen and swiping up and holding opens recent apps, " +
-                    "so a swipe leaves Kiosk. To keep one app on screen, use Pin an app.",
+                "On this phone a swipe leaves Kiosk. Pin an app to stay in one app.",
                 Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             PinPicker(s, on == profile, askPin = "Ask for PIN to unpin" !in off)
@@ -752,8 +762,7 @@ class MainActivity : ComponentActivity() {
         Column {
             // always shown, so it is clear pinning exists; it needs Kiosk on, which enables screen pinning
             ListRow("Pin an app", if (kioskOn) "One app fills the screen until you unpin it" else "Turn Kiosk on first, then choose the app") {
-                if (!kioskOn) toast = "Turn on Kiosk mode first"
-                else run("Listing apps…") {
+                if (kioskOn) run("Listing apps…") {
                     // pin() starts a component; the launch intent names the app's own start screen
                     apps = launcherApps(applicationContext).mapNotNull { (pkg, label) ->
                         packageManager.getLaunchIntentForPackage(pkg)?.component?.flattenToShortString()?.let { it to label }
@@ -762,8 +771,7 @@ class MainActivity : ComponentActivity() {
             }
             // what pinning does, up front: people were surprised by the PIN prompt and by debugging being off afterwards
             Text(
-                "When an app is pinned, Wireless debugging switches off, because MonoMode can't be reached. " +
-                    "To unpin, ${unpinHow()}${if (askPin) "; the phone then asks for your PIN" else ""}. To change Kiosk after that, turn Wireless debugging on again.",
+                "Pinning turns off Wireless debugging. To unpin, ${unpinHow()}.",
                 Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -787,7 +795,7 @@ class MainActivity : ComponentActivity() {
                                 val off = s.finish(applicationContext)
                                 session = null; results = null; cleanup = null
                                 wirelessOn = Session.isWirelessDebuggingOn(applicationContext)
-                                if (off) toast = "$label is pinned and Wireless debugging is off. To unpin, ${unpinHow()}." else message = "$label is pinned. Wireless debugging may still be on: turn it off in Developer options."
+                                if (!off) message = "$label is pinned. Wireless debugging may still be on: turn it off in Developer options."
                             }
                         },
                         verticalAlignment = Alignment.CenterVertically,
