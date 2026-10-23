@@ -39,6 +39,16 @@ class AdbConnection(private val transport: AdbTransport) {
         return ShellResult(out.toString(Charsets.UTF_8), err.toString(Charsets.UTF_8), exit ?: throw ProtocolException("shell_v2 stream closed without exit code"))
     }
 
+    /** adbd usually drops this very connection before replying, so the caller must verify the result itself. */
+    fun disableWirelessDebugging() {
+        try {
+            val r = shellV2("settings put global adb_wifi_enabled 0")
+            if (r.exitCode != 0) throw ProtocolException("settings exited ${r.exitCode}: ${r.stderr}")
+        } catch (_: java.io.IOException) {
+            // expected: switching off tears down the TLS connection we are on
+        }
+    }
+
     // ponytail: buffers the whole stream before parsing; stream it when we run long or chatty commands.
     private fun readStream(service: String): ByteArray {
         // ponytail: one stream at a time with fixed local id 1; multiplex when we need concurrent commands.

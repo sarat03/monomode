@@ -82,5 +82,39 @@ class AdbConnectionTest {
         assertEquals(open.hex(), adbd.sent.toByteArray().copyOfRange(before, before + open.size).hex())
     }
 
+    private fun v2Pkt(id: Int, data: ByteArray) = byteArrayOf(id.toByte()) +
+        java.nio.ByteBuffer.allocate(4).order(java.nio.ByteOrder.LITTLE_ENDIAN).putInt(data.size).array() + data
+
+    private fun connected(vararg stream: AdbMessage): Pair<AdbConnection, FakeAdbd> {
+        val adbd = FakeAdbd(AdbMessage(Command.STLS, 0x01000000, 0, ByteArray(0)), AdbMessage(Command.CNXN, 0x01000001, 4096, "device::".toByteArray()), *stream)
+        return AdbConnection(adbd).apply { connect() } to adbd
+    }
+
+    @Test
+    fun `disableWirelessDebugging puts adb_wifi_enabled 0 over shell_v2`() {
+        val (conn, adbd) = connected(
+            AdbMessage(Command.OKAY, 7, 1, ByteArray(0)), AdbMessage(Command.WRTE, 7, 1, v2Pkt(3, byteArrayOf(0))), AdbMessage(Command.CLSE, 7, 1, ByteArray(0)),
+        )
+        val before = adbd.sent.size()
+        conn.disableWirelessDebugging()
+        val open = AdbMessage(Command.OPEN, 1, 0, "shell,v2,raw:settings put global adb_wifi_enabled 0\u0000".toByteArray()).encode()
+        assertEquals(open.hex(), adbd.sent.toByteArray().copyOfRange(before, before + open.size).hex())
+    }
+
+    @Test
+    fun `disableWirelessDebugging treats adbd dropping the connection as success`() {
+        // seen on Android 14 emulator: adbd closes the socket before any shell_v2 exit packet
+        val (conn, _) = connected(AdbMessage(Command.OKAY, 7, 1, ByteArray(0)))
+        conn.disableWirelessDebugging()
+    }
+
+    @Test
+    fun `disableWirelessDebugging fails when settings exits non-zero`() {
+        val (conn, _) = connected(
+            AdbMessage(Command.OKAY, 7, 1, ByteArray(0)), AdbMessage(Command.WRTE, 7, 1, v2Pkt(3, byteArrayOf(255.toByte()))), AdbMessage(Command.CLSE, 7, 1, ByteArray(0)),
+        )
+        assertFailsWith<ProtocolException> { conn.disableWirelessDebugging() }
+    }
+
     private fun ByteArray.hex() = joinToString("") { "%02x".format(it) }
 }
