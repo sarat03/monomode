@@ -79,38 +79,60 @@ fun healthy(sh: Shell): Boolean {
     return "/" in home && "/" in dial && ime !in setOf("", "null")
 }
 
-/** Record: one disabled package per line, sorted. */
-fun readRecord(record: File): List<String> =
-    if (record.exists()) record.readLines().map { it.trim() }.filter { it.isNotEmpty() } else emptyList()
+enum class Method(
+    val apply: (String) -> List<String>,
+    val undo: (String) -> List<String>,
+    val tag: String,
+) {
+    DISABLE({ listOf("pm", "disable-user", "--user", "0", it) }, { listOf("pm", "enable", it) }, ""),
 
-private fun writeRecord(record: File, pkgs: Collection<String>) {
+    /** For packages the vendor locks against disabling; caution level. The APK stays, so it can come back. */
+    REMOVE({ listOf("pm", "uninstall", "-k", "--user", "0", it) }, { listOf("cmd", "package", "install-existing", it) }, " removed"),
+}
+
+/** Record: one line per package, `pkg` (disabled) or `pkg removed`, sorted. */
+private fun readEntries(record: File): Map<String, Method> =
+    if (!record.exists()) emptyMap() else record.readLines().map { it.trim() }.filter { it.isNotEmpty() }.associate { line ->
+        line.substringBefore(" ") to if (line.endsWith(Method.REMOVE.tag)) Method.REMOVE else Method.DISABLE
+    }
+
+/** Packages we disabled (not removed). */
+fun readRecord(record: File): List<String> = readEntries(record).filterValues { it == Method.DISABLE }.keys.toList()
+
+private fun writeRecord(record: File, entries: Map<String, Method>) {
     record.parentFile?.mkdirs()
     val tmp = File(record.path + ".tmp")
-    tmp.writeText(pkgs.sorted().joinToString("") { "$it\n" })
+    tmp.writeText(entries.toSortedMap().entries.joinToString("") { (pkg, m) -> "$pkg${m.tag}\n" })
     check(tmp.renameTo(record)) { "could not write $record" }
 }
 
 /**
- * Disables in small batches; after each, reads state back and checks health.
- * A batch that breaks Home/dialer/keyboard is re-enabled and apply stops.
+ * Disables (or removes for user 0) in small batches; after each, reads state back and checks health.
+ * A batch that fails or breaks Home/dialer/keyboard is undone and apply stops.
  */
-fun apply(sh: Shell, p: Plan, record: File, dryRun: Boolean = true, batch: Int = 5): Plan {
+fun apply(sh: Shell, p: Plan, record: File, dryRun: Boolean = true, batch: Int = 5, method: Method = Method.DISABLE): Plan {
     if (dryRun) return p
-    val done = readRecord(record).toSortedSet()
+    val done = readEntries(record).toMutableMap()
     for (chunk in p.todo.chunked(batch)) {
-        for (pkg in chunk) sh.run(listOf("pm", "disable-user", "--user", "0", pkg))
-        if (!healthy(sh) || !sh.pkgs("-d").containsAll(chunk)) {
-            for (pkg in chunk) sh.run(listOf("pm", "enable", pkg))
-            throw HealthException("batch $chunk failed verification; rolled back")
+        try {
+            for (pkg in chunk) sh.run(method.apply(pkg))
+            val ok = when (method) {
+                Method.DISABLE -> sh.pkgs("-d").containsAll(chunk)
+                Method.REMOVE -> sh.pkgs().none { it in chunk }
+            }
+            if (!healthy(sh) || !ok) throw HealthException("batch $chunk failed verification; rolled back")
+        } catch (e: Exception) {
+            for (pkg in chunk) runCatching { sh.run(method.undo(pkg)) } // best effort: undo whatever got applied
+            throw e
         }
-        done += chunk
+        for (pkg in chunk) done[pkg] = method
         writeRecord(record, done) // after every good batch so a crash never loses the record
     }
     return p
 }
 
 fun restore(sh: Shell, record: File) {
-    for (pkg in readRecord(record)) if (PKG_RE.matches(pkg)) sh.run(listOf("pm", "enable", pkg))
+    for ((pkg, method) in readEntries(record)) if (PKG_RE.matches(pkg)) sh.run(method.undo(pkg))
 }
 
 /** Packages we disabled that are enabled again (usually after an OTA). */

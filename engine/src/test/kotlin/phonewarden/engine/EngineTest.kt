@@ -14,10 +14,13 @@ class EngineTest {
     open class FakeShell(enabled: List<String>, disabled: List<String> = emptyList(), var homeOk: Boolean = true) : Shell {
         val enabled = enabled.toMutableSet()
         val disabled = disabled.toMutableSet()
+        val removed = mutableSetOf<String>()
         val calls = mutableListOf<List<String>>()
 
         override fun run(args: List<String>): String {
             calls += args
+            if (args.take(2) == listOf("pm", "disable-user") && args.last() == "com.vendor.locked")
+                throw java.io.IOException("pm exited 255: java.lang.IllegalArgumentException: Cannot disable a protected package")
             return when {
                 args.take(3) == listOf("pm", "list", "packages") ->
                     (if ("-d" in args) disabled else enabled + disabled).sorted().joinToString("") { "package:$it\n" }
@@ -31,6 +34,8 @@ class EngineTest {
                     if (args.last() == "com.breaks.home") homeOk = true
                     "Package ${args.last()} new state: enabled"
                 }
+                args.take(2) == listOf("pm", "uninstall") -> { enabled -= args.last(); removed += args.last(); "Success" }
+                args.take(3) == listOf("cmd", "package", "install-existing") -> { removed -= args.last(); enabled += args.last(); "Package ${args.last()} installed for user: 0" }
                 args.take(3) == listOf("cmd", "package", "resolve-activity") -> if (homeOk) "com.launcher/.Home" else "No activity found"
                 args.take(3) == listOf("settings", "get", "secure") -> "com.kbd/.Ime"
                 else -> throw AssertionError("unexpected command $args")
@@ -119,6 +124,26 @@ class EngineTest {
         r.writeText("com.a.b\ncom.x; reboot\n")
         restore(sh, r)
         assertEquals(listOf(listOf("pm", "enable", "com.a.b")), sh.calls)
+    }
+
+    @Test fun `a command failing mid-batch rolls the batch back`() {
+        val sh = FakeShell(listOf("com.a.b", "com.vendor.locked")); val r = rec()
+        assertFailsWith<java.io.IOException> {
+            apply(sh, plan(sh, listOf(Entry("com.a.b", Risk.SAFE), Entry("com.vendor.locked", Risk.SAFE))), r, dryRun = false)
+        }
+        assertTrue("com.a.b" in sh.enabled)
+        assertFalse(r.exists())
+    }
+
+    @Test fun `remove for this user is recorded and restored with install-existing`() {
+        val sh = FakeShell(listOf("com.vendor.locked", "com.keep.me")); val r = rec()
+        val before = sh.enabled.toSet()
+        apply(sh, plan(sh, listOf(Entry("com.vendor.locked", Risk.CAUTION)), maxRisk = Risk.CAUTION), r, dryRun = false, method = Method.REMOVE)
+        assertTrue(listOf("pm", "uninstall", "-k", "--user", "0", "com.vendor.locked") in sh.calls)
+        assertEquals(listOf("com.vendor.locked removed"), r.readLines())
+        restore(sh, r)
+        assertTrue(listOf("cmd", "package", "install-existing", "com.vendor.locked") in sh.calls)
+        assertEquals(before, sh.enabled) // release gate
     }
 
     // command line for adbd, which runs it through sh
