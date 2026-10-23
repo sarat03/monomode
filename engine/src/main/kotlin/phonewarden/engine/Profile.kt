@@ -54,7 +54,15 @@ fun applyProfile(sh: Shell, profile: Profile, record: File) {
     val tmp = File(record.path + ".tmp")
     tmp.writeText(previous.joinToString("") { (c, v) -> "${c.ns} ${c.key} $v\n" })
     check(tmp.renameTo(record)) { "could not write $record" }
-    for (c in profile.changes) sh.write(c, c.value)
+    val done = mutableListOf<Pair<Change, String>>()
+    try {
+        for ((c, before) in previous) { sh.write(c, c.value); done += c to before }
+    } catch (e: Exception) {
+        // undo in reverse, best effort, so a refused write never leaves the phone half changed
+        for ((c, before) in done.asReversed()) runCatching { sh.write(c, before) }
+        record.delete()
+        throw e
+    }
 }
 
 /** Puts back every value from [record], then deletes it. */

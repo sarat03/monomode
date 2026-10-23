@@ -9,14 +9,17 @@ import kotlin.test.assertTrue
 
 class ProfileTest {
     /** settings get/put/delete plus cmd notification set_dnd, which mirrors into global zen_mode like the real service. */
-    class FakeSettings(initial: Map<String, String>) : Shell {
+    class FakeSettings(initial: Map<String, String>, private val denied: Set<String> = emptySet()) : Shell {
         val values = initial.toMutableMap()
         val calls = mutableListOf<List<String>>()
         override fun run(args: List<String>): String {
             calls += args
             return when {
                 args.take(2) == listOf("settings", "get") -> (values["${args[2]} ${args[3]}"] ?: "null") + "\n"
-                args.take(2) == listOf("settings", "put") -> { values["${args[2]} ${args[3]}"] = args[4]; "" }
+                args.take(2) == listOf("settings", "put") -> {
+                    if (args[3] in denied) throw java.io.IOException("settings exited 255: java.lang.SecurityException: Permission denial: writing to settings requires:android.permission.WRITE_SECURE_SETTINGS")
+                    values["${args[2]} ${args[3]}"] = args[4]; ""
+                }
                 args.take(2) == listOf("settings", "delete") -> { values.remove("${args[2]} ${args[3]}"); "Deleted 1 rows\n" }
                 args.take(3) == listOf("cmd", "notification", "set_dnd") -> {
                     values["global zen_mode"] = mapOf("off" to "0", "priority" to "1", "on" to "2", "alarms" to "3").getValue(args[3]); ""
@@ -67,5 +70,14 @@ class ProfileTest {
         val sh = FakeSettings(start); val r = rec()
         applyProfile(sh, Profile.KIOSK, r)
         assertFailsWith<IllegalStateException> { applyProfile(sh, Profile.E_READER, r) }
+    }
+
+    @Test fun `a mode that fails partway undoes what it changed and keeps no record`() {
+        // seen on realme UI: shell settings writes are refused unless "Disable permission monitoring" is on
+        val sh = FakeSettings(start, denied = setOf("window_animation_scale")); val r = rec()
+        val e = assertFailsWith<java.io.IOException> { applyProfile(sh, Profile.E_READER, r) }
+        assertTrue("WRITE_SECURE_SETTINGS" in e.message.orEmpty())
+        assertEquals(start, sh.values)
+        assertTrue(!r.exists())
     }
 }

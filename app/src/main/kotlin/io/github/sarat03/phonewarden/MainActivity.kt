@@ -95,8 +95,17 @@ class MainActivity : ComponentActivity() {
     private fun run(label: String, work: () -> Unit) {
         busy = label; message = null
         thread {
-            try { work() } catch (e: Exception) { message = e.message ?: e.toString() } finally { busy = null }
+            try { work() } catch (e: Exception) { message = explain(e) } finally { busy = null }
         }
+    }
+
+    private fun explain(e: Exception): String {
+        val m = e.message ?: e.toString()
+        // realme, Oppo (ColorOS) and Xiaomi (MIUI) refuse settings writes from adb behind an extra developer switch
+        return if ("WRITE_SECURE_SETTINGS" in m)
+            "This phone blocked the change, so nothing was changed. In Developer options, turn on \"Disable permission monitoring\" " +
+                "(realme, Oppo) or \"USB debugging (Security settings)\" (Xiaomi), then try again."
+        else m
     }
 
     // own task, so opening PhoneWarden again brings back PhoneWarden, not Settings
