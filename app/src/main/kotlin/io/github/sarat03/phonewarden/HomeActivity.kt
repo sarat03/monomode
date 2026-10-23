@@ -69,14 +69,14 @@ class HomeActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // full screen: the home screens draw their own clock; a swipe from the top shows the bars briefly
-        window.insetsController?.apply {
-            hide(WindowInsets.Type.statusBars())
-            systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        }
         setContent {
             LaunchedEffect(Unit) { while (true) { now = Date(); delay(30_000) } }
             if (mode == Profile.E_READER) Reader() else Kiosk()
+        }
+        // full screen, after setContent (the window has no decor before it on Android 11): the home screens draw their own clock; a swipe from the top shows the bars briefly
+        window.insetsController?.apply {
+            hide(WindowInsets.Type.statusBars())
+            systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
     }
 
