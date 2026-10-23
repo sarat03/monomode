@@ -39,6 +39,23 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Warning
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -70,7 +87,10 @@ class MainActivity : ComponentActivity() {
         var wirelessOn by mutableStateOf(false)
         var session by mutableStateOf<Session?>(null)
         var busy by mutableStateOf<String?>(null)
+        /** Something went wrong or needs the user: stays on screen until closed. */
         var message by mutableStateOf<String?>(null)
+        /** A done action ("Kiosk mode is on"): shown briefly at the bottom. */
+        var toast by mutableStateOf<String?>(null)
         var tab by mutableStateOf(0)
         var results by mutableStateOf<List<Finding>?>(null)
         var cleanup by mutableStateOf<Pair<List<Entry>, Plan>?>(null)
@@ -147,8 +167,10 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun Screen() {
-        Column(Modifier.safeDrawingPadding().padding(16.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            busy?.let { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.padding(end = 12.dp)); Text(it) } }
+        val snack = remember { SnackbarHostState() }
+        LaunchedEffect(toast) { toast?.let { snack.showSnackbar(it); toast = null } }
+        Scaffold(snackbarHost = { SnackbarHost(snack) }, contentWindowInsets = WindowInsets(0)) { pad -> Column(Modifier.padding(pad).safeDrawingPadding().padding(16.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            busy?.let { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(it, style = MaterialTheme.typography.bodyMedium) } }
             message?.let { Note(it) }
             val s = session
             when {
@@ -156,7 +178,7 @@ class MainActivity : ComponentActivity() {
                 !paired -> PairScreen()
                 else -> StartScreen()
             }
-        }
+        } }
     }
 
     @Composable
@@ -226,8 +248,7 @@ class MainActivity : ComponentActivity() {
         val off = s.finish(applicationContext)
         session = null; results = null; cleanup = null
         wirelessOn = Session.isWirelessDebuggingOn(applicationContext)
-        message = if (off) "Done. Wireless debugging is off (checked)."
-        else "Wireless debugging may still be on. Turn it off in Developer options."
+        if (off) toast = "Wireless debugging is off" else message = "Wireless debugging may still be on. Turn it off in Developer options."
     }
 
     /** One answer first, then a row per area with its state; the way to finish stays in sight. */
@@ -235,37 +256,43 @@ class MainActivity : ComponentActivity() {
     private fun HomeTab(s: Session) {
         val r = results
         val look = r?.count { it.level == Level.LOOK && !it.system } ?: 0
-        val (bg, fg) = if (r != null && look == 0) MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
-            else MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
+        val tone = when { r == null -> Tone(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant); look == 0 -> safeTone(); else -> warnTone() }
+        val (bg, fg) = tone.bg to tone.fg
         Text("PhoneWarden", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Card(colors = CardDefaults.cardColors(bg, fg), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    when { r == null -> "Not checked yet"; look == 0 -> "Looks safe"; else -> "$look thing${if (look == 1) "" else "s"} to look at" },
-                    style = MaterialTheme.typography.headlineSmall,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Icon(if (r != null && look == 0) Icons.Outlined.CheckCircle else Icons.Outlined.Info, null)
+                    Text(
+                        when { r == null -> "Not checked yet"; look == 0 -> "Looks safe"; else -> "$look thing${if (look == 1) "" else "s"} to look at" },
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                }
                 Text(if (r == null) "Run a check to see what can reach this phone." else "Checked just now. The check only reads; it changes nothing.")
             }
         }
-        HomeRow("Check", if (r == null) "Not run yet" else if (look == 0) "Nothing to look at" else "$look to look at") { tab = 1 }
-        HomeRow("Clean up", if (restoreItems.isEmpty()) "Nothing removed" else "${restoreItems.size} removed or disabled") { tab = 2 }
-        HomeRow("Modes", activeMode?.let { "${it.label} is on" } ?: "None on") { tab = 3 }
-        Card(colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant), modifier = Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        HomeRow(Icons.Outlined.Search, "Check", if (r == null) "Not run yet" else if (look == 0) "Nothing to look at" else "$look to look at") { tab = 1 }
+        HomeRow(Icons.Outlined.Delete, "Clean up", if (restoreItems.isEmpty()) "Nothing removed" else "${restoreItems.size} removed or disabled") { tab = 2 }
+        HomeRow(Icons.Outlined.Settings, "Modes", activeMode?.let { "${it.label} is on" } ?: "None on") { tab = 3 }
+        val w = warnTone()
+        Card(colors = CardDefaults.cardColors(w.bg, w.fg), modifier = Modifier.fillMaxWidth()) {
+            Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(Icons.Outlined.Warning, null)
                 Text("Wireless debugging is on", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                TextButton({ finish(s) }, enabled = busy == null) { Text("Turn off") }
+                TextButton({ finish(s) }, enabled = busy == null) { Text("Turn off", color = w.fg) }
             }
         }
     }
 
     @Composable
-    private fun HomeRow(title: String, state: String, open: () -> Unit) = OutlinedCard(Modifier.fillMaxWidth().clickable(onClick = open)) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+    private fun HomeRow(icon: ImageVector, title: String, state: String, open: () -> Unit) = OutlinedCard(Modifier.fillMaxWidth().clickable(onClick = open)) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleMedium)
                 Text(state, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(Icons.Outlined.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 
@@ -291,12 +318,9 @@ class MainActivity : ComponentActivity() {
         own.forEach { FindingCard(it) }
         if (system.isNotEmpty()) {
             var open by remember { mutableStateOf(false) }
-            OutlinedButton({ open = !open }, Modifier.fillMaxWidth()) {
-                Text("System apps (${system.size})  ${if (open) "▲" else "▼"}")
-            }
-            if (open) {
-                Text("Apps built into the phone. Their access is usually how Android works.", style = MaterialTheme.typography.bodySmall)
-                system.forEach { FindingCard(it) }
+            ListRow("Built-in apps", "${system.size} found, usually how Android works") { open = true }
+            if (open) ListDialog("Built-in apps", "Apps built into the phone. Their access is usually how Android works.", { open = false }) {
+                items(system) { FindingCard(it) }
             }
         }
     }
@@ -307,7 +331,7 @@ class MainActivity : ComponentActivity() {
         val grouped = f.apps.size > 3
         OutlinedCard(
             modifier = (if (grouped) Modifier.clickable { show = true } else Modifier).fillMaxWidth(),
-            border = if (f.level == Level.LOOK && !f.system) BorderStroke(1.5.dp, MaterialTheme.colorScheme.tertiary) else CardDefaults.outlinedCardBorder(),
+            border = if (f.level == Level.LOOK && !f.system) BorderStroke(1.5.dp, warnTone().fg) else CardDefaults.outlinedCardBorder(),
         ) {
             Column(Modifier.padding(12.dp)) {
                 Text(f.title, style = MaterialTheme.typography.titleSmall)
@@ -362,10 +386,9 @@ class MainActivity : ComponentActivity() {
             val background = others.filterNot { it.first in withIcon }
             if (background.isNotEmpty()) {
                 var open by remember { mutableStateOf(false) }
-                OutlinedButton({ open = !open }, Modifier.fillMaxWidth()) { Text("Advanced: background services (${background.size})  ${if (open) "▲" else "▼"}") }
-                if (open) {
-                    Text("These have no icon and run in the background. Many are needed by the phone; leave them unless you know what one does.", style = MaterialTheme.typography.bodySmall)
-                    for ((pkg, name) in background) PickRow(pkg, name)
+                ListRow("Background services", "${background.size} without an icon · ${background.count { it.first in selected }} chosen") { open = true }
+                if (open) ListDialog("Background services", "These run without an icon. Many are needed by the phone; leave them unless you know what one does.", { open = false }) {
+                    items(background, key = { it.first }) { (pkg, name) -> PickRowShown(pkg, name) }
                 }
             }
             // Uninstall only for built-in apps: their apk stays on the phone so Restore works; a Play Store app's is deleted
@@ -400,7 +423,7 @@ class MainActivity : ComponentActivity() {
                     debloat.restore(s.shell, restorePick.toSet())
                     restorePick.clear(); cleanup = null
                     restoreItems = debloat.removed
-                    message = "$n app${if (n == 1) " is" else "s are"} back."
+                    toast = "$n app${if (n == 1) " is" else "s are"} back"
                 }
             }, enabled = busy == null && restorePick.isNotEmpty()) { Text("Restore ${restorePick.size}") }
             TextButton({ restorePick.clear(); restorePick += done.keys }, enabled = busy == null) { Text("Select all") }
@@ -432,7 +455,8 @@ class MainActivity : ComponentActivity() {
         val record = debloat.record
         try {
             debloat.remove(s.shell, selected.toList(), method)
-            message = "${if (method == Method.REMOVE) "Uninstalled" else "Disabled"} ${selected.size} app${if (selected.size == 1) "" else "s"}. A copy of the restore list is in ${Records.copyToDownloads(applicationContext, record)}."
+            Records.copyToDownloads(applicationContext, record)
+            toast = "${if (method == Method.REMOVE) "Uninstalled" else "Disabled"} ${selected.size} app${if (selected.size == 1) "" else "s"}. Restore list saved in Downloads."
             selected.clear()
         } catch (e: HealthException) {
             message = "Stopped: Home, phone or keyboard stopped working after a batch, so that batch was undone. Earlier batches stay uninstalled or disabled; Restore lists them."
@@ -482,11 +506,11 @@ class MainActivity : ComponentActivity() {
                 if (turnOn) run("Turning on $name mode…") {
                     modes.turnOn(s.shell, profile)
                     activeMode = modes.active
-                    message = "$name mode is on."
+                    toast = "$name mode is on"
                 } else run("Turning off $name mode…") {
                     modes.turnOff(s.shell)
                     activeMode = modes.active
-                    message = "$name mode is off. Your settings are back as they were."
+                    toast = "$name mode is off. Your settings are back."
                 }
             }, enabled = busy == null && (on == null || on == profile))
         }
@@ -508,20 +532,28 @@ class MainActivity : ComponentActivity() {
         var open by remember { mutableStateOf(false) }
         val picked = remember { mutableStateListOf(*modes.apps(profile).toTypedArray()) }
         val all = remember { launcherApps(this) }
-        if (profile == Profile.E_READER) {
-            var reader by remember { mutableStateOf(modes.reader(all.map { it.first })) }
-            var choose by remember { mutableStateOf(false) }
-            val name = all.firstOrNull { it.first == reader }?.second ?: "none found"
-            TextButton({ choose = !choose }, Modifier.padding(horizontal = 12.dp)) { Text("Reading app for Continue reading: $name ${if (choose) "▲" else "▼"}") }
-            if (choose) for ((pkg, label) in all) Row(Modifier.padding(horizontal = 12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(pkg == reader, { reader = pkg; modes.setReader(pkg); choose = false })
-                Text(label)
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (profile == Profile.E_READER) {
+                var reader by remember { mutableStateOf(modes.reader(all.map { it.first })) }
+                var choose by remember { mutableStateOf(false) }
+                ListRow("Reading app", all.firstOrNull { it.first == reader }?.second ?: "None found: choose one") { choose = true }
+                if (choose) ListDialog("Reading app", "Opens from Continue reading.", { choose = false }) {
+                    items(all, key = { it.first }) { (pkg, label) ->
+                        Row(Modifier.fillMaxWidth().clickable { reader = pkg; modes.setReader(pkg); choose = false }, verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(pkg == reader, null); Text(label, Modifier.padding(start = 8.dp))
+                        }
+                    }
+                }
             }
-        }
-        TextButton({ open = !open }, Modifier.padding(horizontal = 12.dp)) { Text("${if (profile == Profile.E_READER) "Other apps" else "Apps"} on the home screen (${picked.size}) ${if (open) "▲" else "▼"}") }
-        if (open) for ((pkg, label) in all) Row(Modifier.padding(horizontal = 12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(pkg in picked, { if (it) picked += pkg else picked -= pkg; modes.setApps(profile, picked.toSet()) })
-            Text(label)
+            val names = all.filter { it.first in picked }.joinToString { it.second }
+            ListRow(if (profile == Profile.E_READER) "Other apps" else "Apps on the home screen", names.ifEmpty { "None chosen" }) { open = true }
+            if (open) ListDialog(if (profile == Profile.E_READER) "Other apps" else "Apps on the home screen", null, { open = false }) {
+                items(all, key = { it.first }) { (pkg, label) ->
+                    Row(Modifier.fillMaxWidth().clickable { if (pkg in picked) picked -= pkg else picked += pkg; modes.setApps(profile, picked.toSet()) }, verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(pkg in picked, null); Text(label, Modifier.padding(start = 8.dp))
+                    }
+                }
+            }
         }
     }
 
@@ -540,15 +572,15 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }, enabled = busy == null) { Text("Choose an app to pin") }
-        else for ((component, label) in list) OutlinedButton({
+        else ListDialog("Pin an app", "The app fills the screen and Wireless debugging switches off.", { apps = null }) { items(list) { (component, label) -> OutlinedButton({
             run("Pinning $label and switching off Wireless debugging…") {
                 pin(s.shell, component)
                 val off = s.finish(applicationContext)
                 session = null; results = null; cleanup = null
                 wirelessOn = Session.isWirelessDebuggingOn(applicationContext)
-                message = if (off) "$label is pinned. Wireless debugging is off (checked)." else "$label is pinned. Wireless debugging may still be on: turn it off in Developer options."
+                if (off) toast = "$label is pinned. Wireless debugging is off." else message = "$label is pinned. Wireless debugging may still be on: turn it off in Developer options."
             }
-        }, Modifier.fillMaxWidth(), enabled = busy == null) { Text(label) }
+        }, Modifier.fillMaxWidth(), enabled = busy == null) { Text(label) } } }
     }
 
     @Composable
@@ -557,7 +589,39 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun Note(text: String) = Card(colors = CardDefaults.cardColors(MaterialTheme.colorScheme.secondaryContainer)) {
-        Text(text, Modifier.padding(12.dp))
+    private fun Note(text: String) = errorTone().let { t ->
+        Card(colors = CardDefaults.cardColors(t.bg, t.fg), modifier = Modifier.fillMaxWidth()) {
+            Row(Modifier.padding(start = 12.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Warning, null)
+                Text(text, Modifier.weight(1f).padding(horizontal = 10.dp, vertical = 8.dp))
+                IconButton({ message = null }) { Icon(Icons.Outlined.Close, "Close") }
+            }
+        }
     }
+
+    /** A row that opens a pop-up list: the title, what is chosen, and a chevron. */
+    @Composable
+    private fun ListRow(title: String, value: String, onClick: () -> Unit) = OutlinedCard(Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.bodyLarge)
+                Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Icon(Icons.Outlined.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+
+    /** Android's list pop-up: a title, a scrolling list, and Done. */
+    @Composable
+    private fun ListDialog(title: String, note: String? = null, onClose: () -> Unit, items: LazyListScope.() -> Unit) = AlertDialog(
+        onDismissRequest = onClose,
+        confirmButton = { TextButton(onClose) { Text("Done") } },
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                LazyColumn(Modifier.heightIn(max = 460.dp), verticalArrangement = Arrangement.spacedBy(4.dp), content = items)
+            }
+        },
+    )
 }

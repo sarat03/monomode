@@ -102,7 +102,7 @@ class HomeActivity : ComponentActivity() {
         val picked = mode?.let { modes.apps(it) }.orEmpty()
         val pm = packageManager
         val all = launcherApps(this)
-        fun app(p: Pair<String, String>) = App(p.first, p.second, icons.getOrPut(p.first) { pm.getApplicationIcon(p.first).toBitmap((120 * resources.displayMetrics.density).toInt()) })
+        fun app(p: Pair<String, String>) = App(p.first, p.second, icons.getOrPut(p.first) { pm.getApplicationIcon(p.first).toBitmap((72 * resources.displayMetrics.density).toInt()) })
         val readerPkg = modes.reader(all.map { it.first })
         reader = all.firstOrNull { it.first == readerPkg }?.let(::app)
         apps = all.filter { it.first in picked && (mode != Profile.E_READER || it.first != readerPkg) }.map(::app)
@@ -161,8 +161,8 @@ class HomeActivity : ComponentActivity() {
     @OptIn(ExperimentalFoundationApi::class)
     @Composable
     private fun Kiosk() = AppTheme {
-        // fewer apps, bigger icons: 1 app 120dp, 4 apps 88dp, 9 or more 56dp
-        val icon = (176f / kotlin.math.sqrt(apps.size.coerceAtLeast(1).toFloat())).coerceIn(56f, 120f).dp
+        // fewer apps, bigger icons, within normal launcher sizes: app icons are drawn for about 48dp and blur when stretched far past it
+        val icon = (96f / kotlin.math.sqrt(apps.size.coerceAtLeast(1).toFloat())).coerceIn(48f, 72f).dp
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).safeDrawingPadding().padding(16.dp)) {
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
@@ -219,3 +219,9 @@ fun launcherApps(ctx: Context): List<Pair<String, String>> {
         .map { it.activityInfo.packageName to it.loadLabel(pm).toString() }
         .filter { it.first != ctx.packageName }.distinctBy { it.first }.sortedBy { it.second.lowercase() }
 }
+
+/** Status colours from the first design: green for safe, amber for things to look at, red for errors. */
+class Tone(val bg: Color, val fg: Color)
+@Composable fun safeTone() = if (isSystemInDarkTheme()) Tone(Color(0xFF27500A), Color(0xFFC0DD97)) else Tone(Color(0xFFEAF3DE), Color(0xFF27500A))
+@Composable fun warnTone() = if (isSystemInDarkTheme()) Tone(Color(0xFF633806), Color(0xFFFAC775)) else Tone(Color(0xFFFAEEDA), Color(0xFF633806))
+@Composable fun errorTone() = if (isSystemInDarkTheme()) Tone(Color(0xFF791F1F), Color(0xFFF7C1C1)) else Tone(Color(0xFFFCEBEB), Color(0xFF791F1F))
