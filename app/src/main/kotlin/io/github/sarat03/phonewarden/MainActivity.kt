@@ -627,6 +627,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Gesture navigation per Android's navigation_mode (2), or per realme/Oppo's own switch
+     * (hide_navigationbar_enable > 0), which they use instead: there navigation_mode stays 0.
+     */
+    private fun usesGestures() = Settings.Secure.getInt(contentResolver, "navigation_mode", 0) == 2 ||
+        Settings.Secure.getInt(contentResolver, "hide_navigationbar_enable", 0) > 0
+
+    private fun unpinHow() = if (usesGestures()) "swipe up from the bottom of the screen and hold" else "touch and hold Back and Recents together"
+
     /** Pinning hides PhoneWarden, so it is the last step: pin, then switch Wireless debugging off. */
     @Composable
     private fun PinPicker(s: Session, kioskOn: Boolean) {
@@ -646,7 +655,7 @@ class MainActivity : ComponentActivity() {
         apps?.let { list ->
             ListDialog(
                 "Pin an app",
-                "The app fills the screen and Wireless debugging switches off. To unpin, hold Back and Overview together (or swipe up and hold, with gesture navigation).",
+                "The app fills the screen and Wireless debugging switches off. To unpin it, ${unpinHow()}.",
                 { apps = null }, search = true,
             ) { q ->
                 items(list.filter { it.matches(q) }) { (component, label) ->
@@ -658,7 +667,7 @@ class MainActivity : ComponentActivity() {
                                 val off = s.finish(applicationContext)
                                 session = null; results = null; cleanup = null
                                 wirelessOn = Session.isWirelessDebuggingOn(applicationContext)
-                                if (off) toast = "$label is pinned. Wireless debugging is off." else message = "$label is pinned. Wireless debugging may still be on: turn it off in Developer options."
+                                if (off) toast = "$label is pinned. To unpin it, ${unpinHow()}." else message = "$label is pinned. Wireless debugging may still be on: turn it off in Developer options."
                             }
                         },
                         verticalAlignment = Alignment.CenterVertically,
