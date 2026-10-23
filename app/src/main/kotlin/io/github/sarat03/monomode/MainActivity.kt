@@ -417,7 +417,7 @@ class MainActivity : ComponentActivity() {
         Hero(
             tone, if (r != null && look == 0) Icons.Outlined.CheckCircle else Icons.Outlined.Info,
             when { r == null -> "Not checked yet"; look == 0 -> "Nothing to look at"; else -> "$look thing${if (look == 1) "" else "s"} to look at" },
-            if (r == null) "What can reach this phone, and which apps have special access. Read-only." else "Everything else looks normal. The check only reads; it changes nothing.",
+            if (r == null) "What can reach this phone, and which apps have special access. Read-only." else if (look == 0) "Checked just now. The check only reads; it changes nothing." else "Everything else looks normal. The check only reads; it changes nothing.",
         ) {
             Button({ run("Checking…") { results = s.check(applicationContext) } }, enabled = busy == null, colors = ButtonDefaults.buttonColors(tone.fg, tone.bg)) {
                 Text(if (r == null) "Check" else "Check again")
@@ -763,7 +763,7 @@ class MainActivity : ComponentActivity() {
             Text(
                 "When an app is pinned, Wireless debugging switches off, because MonoMode can't be reached. " +
                     "To unpin, ${unpinHow()}${if (askPin) "; the phone then asks for your PIN" else ""}. To change Kiosk after that, turn Wireless debugging on again.",
-                Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         apps?.let { list ->
