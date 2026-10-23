@@ -14,7 +14,7 @@ class AdbConnectionTest {
         val sent = ByteArrayOutputStream()
         var tlsAt = -1
 
-        override fun write(bytes: ByteArray) = sent.writeBytes(bytes)
+        override fun write(bytes: ByteArray) = sent.write(bytes)
         override fun readFully(n: Int): ByteArray {
             if (pos + n > incoming.size) throw EOFException()
             return incoming.copyOfRange(pos, pos + n).also { pos += n }

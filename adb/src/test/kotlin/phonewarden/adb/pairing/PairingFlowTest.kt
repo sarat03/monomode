@@ -19,7 +19,7 @@ class PairingFlowTest {
         val sent = ByteArrayOutputStream()
 
         override fun exportedKey() = exported
-        override fun write(bytes: ByteArray) = sent.writeBytes(bytes)
+        override fun write(bytes: ByteArray) = sent.write(bytes)
         override fun readFully(n: Int): ByteArray {
             if (pos + n > incoming.size) throw EOFException()
             return incoming.copyOfRange(pos, pos + n).also { pos += n }

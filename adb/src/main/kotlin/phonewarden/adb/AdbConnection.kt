@@ -34,12 +34,12 @@ class AdbConnection(private val transport: AdbTransport) {
             val id = buf.get().toInt().also { ids += it }
             val data = ByteArray(buf.int).also { buf.get(it) }
             when (id) {
-                ID_STDOUT -> out.writeBytes(data)
-                ID_STDERR -> err.writeBytes(data)
+                ID_STDOUT -> out.write(data)
+                ID_STDERR -> err.write(data)
                 ID_EXIT -> exit = data[0].toInt() and 0xff
             }
         }
-        return ShellResult(out.toString(Charsets.UTF_8), err.toString(Charsets.UTF_8), exit ?: throw ProtocolException("shell_v2 stream closed without exit code after ${buf.capacity()} bytes, packet ids $ids"))
+        return ShellResult(String(out.toByteArray(), Charsets.UTF_8), String(err.toByteArray(), Charsets.UTF_8), exit ?: throw ProtocolException("shell_v2 stream closed without exit code after ${buf.capacity()} bytes, packet ids $ids"))
     }
 
     /** adbd usually drops this very connection before replying, so the caller must verify the result itself. */
@@ -63,7 +63,7 @@ class AdbConnection(private val transport: AdbTransport) {
             if (m.arg1 != id) continue // late messages for an earlier stream, e.g. adbd's second CLSE
             when (m.command) {
                 Command.OKAY -> Unit
-                Command.WRTE -> { out.writeBytes(m.payload); send(AdbMessage(Command.OKAY, id, m.arg0, ByteArray(0))) }
+                Command.WRTE -> { out.write(m.payload); send(AdbMessage(Command.OKAY, id, m.arg0, ByteArray(0))) }
                 Command.CLSE -> { send(AdbMessage(Command.CLSE, id, m.arg0, ByteArray(0))); return out.toByteArray() }
                 else -> throw ProtocolException("unexpected ${m.command} on shell stream")
             }

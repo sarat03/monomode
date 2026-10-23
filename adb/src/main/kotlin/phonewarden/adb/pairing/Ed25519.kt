@@ -3,12 +3,12 @@ package phonewarden.adb.pairing
 import java.math.BigInteger
 
 // Edwards25519 arithmetic after the RFC 8032 reference code. Not constant-time; see ADR 0001.
-private val P: BigInteger = BigInteger.TWO.pow(255) - BigInteger.valueOf(19)
+private val P: BigInteger = BigInteger.valueOf(2).pow(255) - BigInteger.valueOf(19)
 private val D: BigInteger = BigInteger.valueOf(-121665) * BigInteger.valueOf(121666).modInverse(P) % P
-private val SQRT_M1: BigInteger = BigInteger.TWO.modPow((P - BigInteger.ONE) / BigInteger.valueOf(4), P)
+private val SQRT_M1: BigInteger = BigInteger.valueOf(2).modPow((P - BigInteger.ONE) / BigInteger.valueOf(4), P)
 
 /** Order of the prime-order subgroup. */
-val L: BigInteger = BigInteger.TWO.pow(252) + BigInteger("27742317777372353535851937790883648493")
+val L: BigInteger = BigInteger.valueOf(2).pow(252) + BigInteger("27742317777372353535851937790883648493")
 
 fun leInt(bytes: ByteArray) = BigInteger(1, bytes.reversedArray())
 fun le32(n: BigInteger): ByteArray = n.toByteArray().reversedArray().copyOf(32)
