@@ -22,7 +22,9 @@ class RealAdbdExposureTest {
         val report = TlsAdbTransport(InetAddress.getLoopbackAddress(), port!!, AdbKey.getOrCreate()).use {
             network(AdbConnection(it).apply { connect() }.asShell())
         }
-        assertTrue(report.listening.any { it.port == port }, "TLS port $port not in ${report.listening.map { it.local }}")
-        assertTrue(report.adbExposed)
+        val adbd = report.listening.firstOrNull { it.port == port }
+        assertTrue(adbd != null, "TLS port $port not in ${report.listening.map { it.local }}")
+        // CI starts the listener under `adb root`, so adbd is uid 0 there; on phones it is shell (2000)
+        if (adbd.uid == 2000) assertTrue(report.adbExposed)
     }
 }

@@ -58,7 +58,7 @@ class TlsPairingTransportTest {
     @Test
     fun bytesFlowBothWaysAndShortReadsFail() {
         val adbd = serve { s ->
-            val got = s.inputStream.readNBytes(6)
+            val got = ByteArray(6).also { java.io.DataInputStream(s.inputStream).readFully(it) } // readNBytes needs API 33
             s.outputStream.write(byteArrayOf(9, 8, 7)) // then the server closes the socket
             s.outputStream.flush()
             got
