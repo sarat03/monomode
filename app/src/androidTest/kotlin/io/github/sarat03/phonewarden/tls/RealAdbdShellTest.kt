@@ -8,6 +8,7 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import phonewarden.adb.AdbConnection
+import phonewarden.adb.ShellResult
 
 /**
  * Runs a shell command on this device's real adbd with the key paired by RealAdbdPairingTest.
@@ -24,5 +25,16 @@ class RealAdbdShellTest {
             AdbConnection(it).run { connect(); shell("echo hi") }
         }
         assertEquals("hi\n", out)
+    }
+
+    @Test
+    fun shellV2SplitsStreamsAndExitCodeThroughRealAdbd() {
+        val port = InstrumentationRegistry.getArguments().getString("connectPort")?.toInt()
+        assumeTrue("no connect port", port != null)
+
+        val result = TlsAdbTransport(InetAddress.getLoopbackAddress(), port!!, AdbKey.getOrCreate()).use {
+            AdbConnection(it).run { connect(); shellV2("echo out; echo err >&2; exit 3") }
+        }
+        assertEquals(ShellResult("out\n", "err\n", 3), result)
     }
 }

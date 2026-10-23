@@ -62,5 +62,25 @@ class AdbConnectionTest {
         assertEquals(expected.hex(), adbd.sent.toByteArray().copyOfRange(before, adbd.sent.size()).hex())
     }
 
+    @Test
+    fun `shellV2 splits stdout, stderr and exit code from packets that span WRTEs`() {
+        // shell_protocol.h: [id:1][len:4 LE][data]; stdout=1, stderr=2, exit=3
+        fun pkt(id: Int, data: ByteArray) = byteArrayOf(id.toByte()) +
+            java.nio.ByteBuffer.allocate(4).order(java.nio.ByteOrder.LITTLE_ENDIAN).putInt(data.size).array() + data
+        val stream = pkt(1, "out\n".toByteArray()) + pkt(2, "err\n".toByteArray()) + pkt(3, byteArrayOf(2))
+        fun m(c: Command, a0: Int, a1: Int, p: ByteArray = ByteArray(0)) = AdbMessage(c, a0, a1, p)
+        val adbd = FakeAdbd(
+            m(Command.STLS, 0x01000000, 0), m(Command.CNXN, 0x01000001, 4096, "device::".toByteArray()),
+            m(Command.OKAY, 7, 1), m(Command.WRTE, 7, 1, stream.copyOfRange(0, 3)),
+            m(Command.WRTE, 7, 1, stream.copyOfRange(3, stream.size)), m(Command.CLSE, 7, 1),
+        )
+        val conn = AdbConnection(adbd).apply { connect() }
+        val before = adbd.sent.size()
+
+        assertEquals(ShellResult("out\n", "err\n", 2), conn.shellV2("ls nope"))
+        val open = m(Command.OPEN, 1, 0, "shell,v2,raw:ls nope\u0000".toByteArray()).encode()
+        assertEquals(open.hex(), adbd.sent.toByteArray().copyOfRange(before, before + open.size).hex())
+    }
+
     private fun ByteArray.hex() = joinToString("") { "%02x".format(it) }
 }
