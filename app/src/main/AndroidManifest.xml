@@ -24,6 +24,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- home screen only while a mode sets it with set-home-activity; launchMode keeps one copy -->
+        <activity
+            android:name=".HomeActivity"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
         <receiver android:name=".Pairing$PairReceiver" android:exported="false" />
     </application>
 </manifest>

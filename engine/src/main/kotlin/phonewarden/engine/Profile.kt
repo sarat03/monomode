@@ -12,6 +12,11 @@ private const val DND_ON = "priority"
 /** global zen_mode values (Settings.Global.ZEN_MODE_*) as set_dnd arguments. */
 private val ZEN_TO_DND = mapOf("0" to "off", "1" to "priority", "2" to "on", "3" to "alarms")
 
+private const val HOME = "home"
+/** PhoneWarden's own home screen, showing only the apps picked for the mode that is on. */
+const val MODE_HOME = "io.github.sarat03.phonewarden/.HomeActivity"
+private val ownHome = Change(HOME, "activity", MODE_HOME)
+
 private val grayscale = listOf(
     Change("secure", "accessibility_display_daltonizer_enabled", "1"),
     Change("secure", "accessibility_display_daltonizer", "0"), // 0 = monochromacy
@@ -30,23 +35,28 @@ enum class Profile(val options: Map<String, List<Change>>) {
         "Allow pinning an app" to listOf(Change("secure", "lock_to_app_enabled", "1")), // the user pins the app
         "Screen stays on while charging" to listOf(Change("global", "stay_on_while_plugged_in", "7")), // AC | USB | wireless
         "Mute notifications" to listOf(muted),
+        "Own home screen" to listOf(ownHome),
     )),
     E_READER(mapOf(
         "Grayscale screen" to grayscale,
         "No animations" to noAnimations,
         "Mute notifications" to listOf(muted),
         "Battery saver" to batterySaver,
+        "Own home screen" to listOf(ownHome),
     ));
 
     val changes get() = options.values.flatten()
 }
 
 private fun Shell.read(c: Change): String =
-    if (c.ns == DND) ZEN_TO_DND[run(listOf("settings", "get", "global", "zen_mode")).trim()] ?: "off"
+    // shortcut: assumes a default launcher is set; with none, this returns the chooser, which set-home-activity rejects
+    if (c.ns == HOME) run(listOf("cmd", "package", "resolve-activity", "--brief", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.HOME")).trim().lines().last()
+    else if (c.ns == DND) ZEN_TO_DND[run(listOf("settings", "get", "global", "zen_mode")).trim()] ?: "off"
     else run(listOf("settings", "get", c.ns, c.key)).trim()
 
 private fun Shell.write(c: Change, value: String) {
     when {
+        c.ns == HOME -> run(listOf("cmd", "package", "set-home-activity", value))
         c.ns == DND -> run(listOf("cmd", "notification", "set_dnd", value)) // writing zen_mode directly is ignored
         value == "null" -> run(listOf("settings", "delete", c.ns, c.key)) // was unset before
         else -> run(listOf("settings", "put", c.ns, c.key, value))

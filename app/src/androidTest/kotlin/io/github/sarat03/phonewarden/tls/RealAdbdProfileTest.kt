@@ -24,7 +24,7 @@ class RealAdbdProfileTest {
      * Not the whole settings list: a freshly booted emulator keeps changing unrelated keys on its own.
      */
     private fun snapshot(sh: Shell, profile: Profile): Map<String, String> =
-        (profile.changes.filter { it.ns != "dnd" }.map { it.ns to it.key } +
+        (profile.changes.filter { it.ns != "dnd" && it.ns != "home" }.map { it.ns to it.key } +
             listOf("global" to "zen_mode", "global" to "mode_ringer", "global" to "low_power", "global" to "low_power_sticky"))
             .associate { (ns, key) -> "$ns $key" to sh.run(listOf("settings", "get", ns, key)).trim() }
 

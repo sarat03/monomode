@@ -366,7 +366,7 @@ class MainActivity : ComponentActivity() {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(name, style = MaterialTheme.typography.titleMedium)
                 Text(what)
-                if (on != null && on != profile) Text("Turn off ${on.name.lowercase().replace('_', '-')} mode first.", style = MaterialTheme.typography.bodySmall)
+                if (on != null && on != profile) Text("Turn off ${on.label.lowercase()} mode first.", style = MaterialTheme.typography.bodySmall)
             }
             Switch(on == profile, { turnOn ->
                 val record = Records.mode(applicationContext, profile)
@@ -389,6 +389,19 @@ class MainActivity : ComponentActivity() {
                 prefs.edit().putStringSet(profile.name, off.toSet()).apply()
             }, enabled = on == null)
             Text(option)
+        }
+        if ("Own home screen" !in off) HomePicker(profile)
+    }
+
+    /** Which apps the mode's home screen shows; editable any time, the home screen rereads it on return. */
+    @Composable
+    private fun HomePicker(profile: Profile) {
+        var open by remember { mutableStateOf(false) }
+        val picked = remember { mutableStateListOf(*homeApps(this, profile).toTypedArray()) }
+        TextButton({ open = !open }, Modifier.padding(horizontal = 12.dp)) { Text("Apps on the home screen (${picked.size}) ${if (open) "▲" else "▼"}") }
+        if (open) for ((pkg, label) in remember { launcherApps(this) }) Row(Modifier.padding(horizontal = 12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(pkg in picked, { if (it) picked += pkg else picked -= pkg; setHomeApps(this@MainActivity, profile, picked.toSet()) })
+            Text(label)
         }
     }
 

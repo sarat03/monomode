@@ -24,6 +24,8 @@ class ProfileTest {
                 args.take(3) == listOf("cmd", "notification", "set_dnd") -> {
                     values["global zen_mode"] = mapOf("off" to "0", "priority" to "1", "on" to "2", "alarms" to "3").getValue(args[3]); ""
                 }
+                args.take(3) == listOf("cmd", "package", "resolve-activity") -> "priority=0 isDefault=true\n${values.getValue("home activity")}\n"
+                args.take(3) == listOf("cmd", "package", "set-home-activity") -> { values["home activity"] = args[3]; "Success\n" }
                 else -> throw AssertionError("unexpected command $args")
             }
         }
@@ -32,6 +34,7 @@ class ProfileTest {
     private val start = mapOf(
         "global zen_mode" to "0", "global low_power" to "0", "global window_animation_scale" to "1.0",
         "global transition_animation_scale" to "1.0", "global stay_on_while_plugged_in" to "1",
+        "home activity" to "com.oppo.launcher/.Launcher",
     )
     private fun rec() = File(Files.createTempDirectory("pw").toFile(), "profile.txt")
 
@@ -56,6 +59,14 @@ class ProfileTest {
         assertEquals("1", sh.values["secure accessibility_display_daltonizer_enabled"])
         restoreProfile(sh, r)
         assertEquals(start, sh.values)
+    }
+
+    @Test fun `own home screen replaces the launcher until restore`() {
+        val sh = FakeSettings(start); val r = rec()
+        applyProfile(sh, Profile.E_READER, r)
+        assertEquals(MODE_HOME, sh.values["home activity"])
+        restoreProfile(sh, r)
+        assertEquals("com.oppo.launcher/.Launcher", sh.values["home activity"])
     }
 
     @Test fun `kiosk keeps the screen on while charging and enables pinning`() {
