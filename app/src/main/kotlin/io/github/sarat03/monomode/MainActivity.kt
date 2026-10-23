@@ -681,7 +681,8 @@ class MainActivity : ComponentActivity() {
                     modes.setOff(profile, off.toSet())
                 }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(option, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                    Switch(option !in off, null, enabled = on == null)
+                    // drawn enabled even while locked: a disabled "on" switch looks off; the row itself ignores taps then
+                    Switch(option !in off, null)
                 }
                 if (i < profile.options.size - 1) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
