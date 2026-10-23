@@ -162,7 +162,8 @@ fun otherApps(sh: Shell, listed: Set<String>, self: String): List<String> =
     sh.pkgs("-e").filter { it !in listed && it !in PROTECTED && it != self && !it.startsWith("$self.") && !isOverlay(it) }.sorted()
 
 // shortcut: by name; overlays only recolour or reshape the system, they are not apps. Read the apk flag if one slips through.
-private fun isOverlay(pkg: String) = "overlay" in pkg.lowercase() || pkg.startsWith("com.android.theme.")
+// com.android.internal.* are system styles too (navigation bar mode, display cutout); removing one can break navigation
+private fun isOverlay(pkg: String) = "overlay" in pkg.lowercase() || pkg.startsWith("com.android.theme.") || pkg.startsWith("com.android.internal.")
 
 /** One phone's debloat: what can go, removing in checked batches, and the restore record in [record]. */
 class Debloat(val record: File) {

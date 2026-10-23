@@ -41,6 +41,9 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -391,7 +394,13 @@ class MainActivity : ComponentActivity() {
             val background = others.filterNot { it.first in withIcon }
             if (background.isNotEmpty()) {
                 var open by remember { mutableStateOf(false) }
-                ListRow("Background services", "${background.size} without an icon · ${background.count { it.first in selected }} chosen") { open = true }
+                // what was picked in the pop-up shows here too, so the list matches what Uninstall/Disable will act on
+                val chosen = background.filter { it.first in selected }
+                if (chosen.isNotEmpty()) {
+                    Text("Background services you chose", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    for ((pkg, name) in chosen) PickRowShown(pkg, name)
+                }
+                ListRow("Background services", "${background.size} without an icon · ${if (chosen.isEmpty()) "add some" else "${chosen.size} chosen, add more"}") { open = true }
                 if (open) ListDialog("Background services", "These run without an icon. Many are needed by the phone; leave them unless you know what one does.", { open = false }, search = true) { q ->
                     items(background.filter { it.matches(q) }, key = { it.first }) { (pkg, name) -> PickRowShown(pkg, name) }
                 }
@@ -442,8 +451,8 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun PickRowShown(pkg: String, text: String) = Row(verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(pkg in selected, { on -> if (on) selected += pkg else selected -= pkg })
+    private fun PickRowShown(pkg: String, text: String) = Row(Modifier.fillMaxWidth().toggleable(pkg in selected, role = Role.Checkbox) { if (it) selected += pkg else selected -= pkg }, verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(pkg in selected, null) // the whole row toggles it, and reads as one checkbox to TalkBack
         Column {
             Text(text)
             if (text != pkg) Text(pkg, style = MaterialTheme.typography.bodySmall)
@@ -544,7 +553,7 @@ class MainActivity : ComponentActivity() {
                 ListRow("Reading app", all.firstOrNull { it.first == reader }?.second ?: "None found: choose one") { choose = true }
                 if (choose) ListDialog("Reading app", "Opens from Continue reading.", { choose = false }, search = true) { q ->
                     items(all.filter { it.matches(q) }, key = { it.first }) { (pkg, label) ->
-                        Row(Modifier.fillMaxWidth().clickable { reader = pkg; modes.setReader(pkg); choose = false }, verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.fillMaxWidth().selectable(pkg == reader, role = Role.RadioButton) { reader = pkg; modes.setReader(pkg); choose = false }, verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(pkg == reader, null); AppIcon(pkg); Text(label, Modifier.padding(start = 10.dp))
                         }
                     }
@@ -554,7 +563,7 @@ class MainActivity : ComponentActivity() {
             ListRow(if (profile == Profile.E_READER) "Other apps" else "Apps on the home screen", names.ifEmpty { "None chosen" }) { open = true }
             if (open) ListDialog(if (profile == Profile.E_READER) "Other apps" else "Apps on the home screen", null, { open = false }, search = true) { q ->
                 items(all.filter { it.matches(q) }, key = { it.first }) { (pkg, label) ->
-                    Row(Modifier.fillMaxWidth().clickable { if (pkg in picked) picked -= pkg else picked += pkg; modes.setApps(profile, picked.toSet()) }, verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().toggleable(pkg in picked, role = Role.Checkbox) { if (it) picked += pkg else picked -= pkg; modes.setApps(profile, picked.toSet()) }, verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(pkg in picked, null); AppIcon(pkg); Text(label, Modifier.padding(start = 10.dp))
                     }
                 }

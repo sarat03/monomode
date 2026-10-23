@@ -165,7 +165,7 @@ class EngineTest {
     @Test fun `other apps are the enabled ones not in the list and not protected`() {
         val sh = Shell { args ->
             check(args == listOf("pm", "list", "packages", "-e")) { "unexpected $args" }
-            "package:com.android.systemui\npackage:com.listed.app\npackage:com.vendor.extra\npackage:com.chat.app\npackage:io.me\npackage:android.frameworkres.overlay.Network\npackage:com.android.theme.icon.circle\n"
+            "package:com.android.systemui\npackage:com.listed.app\npackage:com.vendor.extra\npackage:com.chat.app\npackage:io.me\npackage:android.frameworkres.overlay.Network\npackage:com.android.theme.icon.circle\npackage:com.android.internal.systemui.navbar.threebutton\n" // last: navigation bar style, seen on Realme XT
         }
         assertEquals(listOf("com.chat.app", "com.vendor.extra"), otherApps(sh, listed = setOf("com.listed.app"), self = "io.me"))
     }
