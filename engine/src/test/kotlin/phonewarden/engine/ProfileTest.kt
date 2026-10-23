@@ -69,6 +69,16 @@ class ProfileTest {
         assertEquals("com.oppo.launcher/.Launcher", sh.values["home activity"])
     }
 
+    @Test fun `kiosk asks for the PIN to unpin, or turned off, explicitly does not`() {
+        val on = FakeSettings(start); applyProfile(on, Profile.KIOSK, rec())
+        assertEquals("1", on.values["secure lock_to_app_exit_locked"])
+        val sh = FakeSettings(start); val r = rec()
+        applyProfile(sh, Profile.KIOSK, r, off = setOf("Ask for PIN to unpin"))
+        assertEquals("0", sh.values["secure lock_to_app_exit_locked"]) // Android's own default would still ask
+        restoreProfile(sh, r)
+        assertEquals(start, sh.values)
+    }
+
     @Test fun `kiosk keeps the screen on while charging and enables pinning`() {
         val sh = FakeSettings(start); val r = rec()
         applyProfile(sh, Profile.KIOSK, r)

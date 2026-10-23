@@ -593,7 +593,7 @@ class MainActivity : ComponentActivity() {
         }
         if (on == profile) Text("Turn the mode off to change these.", Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.bodyMedium)
         if ("Own home screen" !in off) HomePicker(profile)
-        if (profile == Profile.KIOSK) PinPicker(s, on == profile)
+        if (profile == Profile.KIOSK) PinPicker(s, on == profile, askPin = "Ask for PIN to unpin" !in off)
     }
 
     /** Which apps the mode's home screen shows; editable any time, the home screen rereads it on return. */
@@ -638,7 +638,7 @@ class MainActivity : ComponentActivity() {
 
     /** Pinning hides PhoneWarden, so it is the last step: pin, then switch Wireless debugging off. */
     @Composable
-    private fun PinPicker(s: Session, kioskOn: Boolean) {
+    private fun PinPicker(s: Session, kioskOn: Boolean, askPin: Boolean) {
         var apps by remember { mutableStateOf<List<Pair<String, String>>?>(null) }
         Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp)) {
             // always shown, so it is clear pinning exists; it needs Kiosk on, which enables screen pinning
@@ -651,6 +651,12 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+            // what pinning does, up front: people were surprised by the PIN prompt and by debugging being off afterwards
+            Text(
+                "When an app is pinned, Wireless debugging switches off, because PhoneWarden can't be reached. " +
+                    "To unpin, ${unpinHow()}${if (askPin) "; the phone then asks for your PIN" else ""}. To change Kiosk after that, turn Wireless debugging on again.",
+                Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         apps?.let { list ->
             ListDialog(
@@ -667,7 +673,7 @@ class MainActivity : ComponentActivity() {
                                 val off = s.finish(applicationContext)
                                 session = null; results = null; cleanup = null
                                 wirelessOn = Session.isWirelessDebuggingOn(applicationContext)
-                                if (off) toast = "$label is pinned. To unpin it, ${unpinHow()}." else message = "$label is pinned. Wireless debugging may still be on: turn it off in Developer options."
+                                if (off) toast = "$label is pinned and Wireless debugging is off. To unpin, ${unpinHow()}." else message = "$label is pinned. Wireless debugging may still be on: turn it off in Developer options."
                             }
                         },
                         verticalAlignment = Alignment.CenterVertically,

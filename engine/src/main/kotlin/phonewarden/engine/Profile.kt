@@ -30,13 +30,19 @@ private val batterySaver = listOf(Change("global", "low_power", "1"), Change("gl
  * Each mode is a set of named options the user can switch off one by one.
  * Debloat and the KOReader recommendation are offered by the app next to these; they are not settings.
  */
-enum class Profile(val options: Map<String, List<Change>>) {
+/**
+ * [whenOff]: what an option sets when the user switches it off, for settings whose Android default is
+ * already "on" (leaving them alone would not turn them off). Other options are simply left alone.
+ */
+enum class Profile(val options: Map<String, List<Change>>, val whenOff: Map<String, List<Change>> = emptyMap()) {
     KIOSK(mapOf(
         "Allow pinning an app" to listOf(Change("secure", "lock_to_app_enabled", "1")), // the user pins the app
         "Screen stays on while charging" to listOf(Change("global", "stay_on_while_plugged_in", "7")), // AC | USB | wireless
         "Mute notifications" to listOf(muted),
         "Own home screen" to listOf(ownHome),
-    )),
+        // Android asks for the PIN by default when the phone has a screen lock
+        "Ask for PIN to unpin" to listOf(Change("secure", "lock_to_app_exit_locked", "1")),
+    ), whenOff = mapOf("Ask for PIN to unpin" to listOf(Change("secure", "lock_to_app_exit_locked", "0")))),
     E_READER(mapOf(
         "Grayscale screen" to grayscale,
         "No animations" to noAnimations,
@@ -69,7 +75,8 @@ private fun Shell.write(c: Change, value: String) {
  */
 fun applyProfile(sh: Shell, profile: Profile, record: File, off: Set<String> = emptySet()) {
     check(!record.exists()) { "a profile is already applied; restore it first" }
-    val previous = profile.options.filterKeys { it !in off }.values.flatten().map { it to sh.read(it) }
+    val chosen = profile.options.filterKeys { it !in off }.values.flatten() + profile.whenOff.filterKeys { it in off }.values.flatten()
+    val previous = chosen.map { it to sh.read(it) }
     record.parentFile?.mkdirs()
     val tmp = File(record.path + ".tmp")
     tmp.writeText(previous.joinToString("") { (c, v) -> "${c.ns} ${c.key} $v\n" })
