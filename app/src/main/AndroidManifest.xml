@@ -3,6 +3,8 @@
 
     <!-- Needed even for loopback sockets; the app only ever connects to this phone's own adbd (ADR 0002). -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Exposure check: is a VPN active. Read-only, granted at install. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:allowBackup="false"
