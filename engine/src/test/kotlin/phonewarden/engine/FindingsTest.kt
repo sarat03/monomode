@@ -62,6 +62,8 @@ class FindingsTest {
     @Test fun `an app group sharing one user id is shortened`() {
         val many = (1..40).joinToString(",") { "com.vendor.part$it" }
         val net = NetworkReport(emptyList(), emptyList(), listOf(sock(4000, 1000, many, "1.2.3.4:443", "01")), false)
-        assertEquals("com.vendor.part1 and 39 more apps is talking to the internet", findings(net, noAccess, nothing, 0).first().title)
+        val f = findings(net, noAccess, nothing, 0).first()
+        assertEquals("com.vendor.part1 and 39 more apps is talking to the internet", f.title)
+        assertEquals(40, f.apps.size) // the screen lists them all in a pop-up
     }
 }

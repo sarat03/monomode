@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
 /** Ported from test_core.py; same fake device, same expectations. */
 class EngineTest {
     /** Records every argv; simulates package state like a real device. */
-    open class FakeShell(enabled: List<String>, disabled: List<String> = emptyList(), var homeOk: Boolean = true) : Shell {
+    open class FakeShell(enabled: List<String>, disabled: List<String> = emptyList(), var homeOk: Boolean = true, val system: Set<String> = setOf("com.vendor.locked")) : Shell {
         val enabled = enabled.toMutableSet()
         val disabled = disabled.toMutableSet()
         val removed = mutableSetOf<String>()
@@ -23,7 +23,7 @@ class EngineTest {
                 throw java.io.IOException("pm exited 255: java.lang.IllegalArgumentException: Cannot disable a protected package")
             return when {
                 args.take(3) == listOf("pm", "list", "packages") ->
-                    (if ("-d" in args) disabled else enabled + disabled).sorted().joinToString("") { "package:$it\n" }
+                    (if ("-d" in args) disabled else if ("-s" in args) system else enabled + disabled).sorted().joinToString("") { "package:$it\n" }
                 args.take(2) == listOf("pm", "disable-user") -> {
                     enabled -= args.last(); disabled += args.last()
                     if (args.last() == "com.breaks.home") homeOk = false
@@ -168,5 +168,27 @@ class EngineTest {
             "package:com.android.systemui\npackage:com.listed.app\npackage:com.vendor.extra\npackage:com.chat.app\npackage:io.me\npackage:android.frameworkres.overlay.Network\npackage:com.android.theme.icon.circle\n"
         }
         assertEquals(listOf("com.chat.app", "com.vendor.extra"), otherApps(sh, listed = setOf("com.listed.app"), self = "io.me"))
+    }
+
+    @Test fun `remove for this user refuses apps that are not built in, before changing anything`() {
+        // seen on Realme XT: a Play Store app's apk is deleted, so install-existing leaves a broken entry
+        val sh = FakeShell(listOf("com.vendor.locked", "com.play.calculator")); val r = rec()
+        val e = assertFailsWith<IllegalArgumentException> {
+            apply(sh, Plan(todo = listOf("com.vendor.locked", "com.play.calculator")), r, dryRun = false, method = Method.REMOVE)
+        }
+        assertTrue("com.play.calculator" in e.message.orEmpty())
+        assertTrue(sh.calls.none { it.take(2) == listOf("pm", "uninstall") })
+        assertFalse(r.exists())
+    }
+
+    @Test fun `restore only the picked apps and keep the rest in the record`() {
+        val sh = FakeShell(listOf("com.a.b", "com.c.d", "com.vendor.locked")); val r = rec()
+        apply(sh, plan(sh, listOf(Entry("com.a.b", Risk.SAFE), Entry("com.c.d", Risk.SAFE))), r, dryRun = false)
+        apply(sh, Plan(todo = listOf("com.vendor.locked")), r, dryRun = false, method = Method.REMOVE)
+        assertEquals(mapOf("com.a.b" to Method.DISABLE, "com.c.d" to Method.DISABLE, "com.vendor.locked" to Method.REMOVE), recorded(r))
+        restore(sh, r, only = setOf("com.c.d", "com.vendor.locked"))
+        assertTrue("com.c.d" in sh.enabled && "com.vendor.locked" in sh.enabled)
+        assertTrue("com.a.b" in sh.disabled)
+        assertEquals(mapOf("com.a.b" to Method.DISABLE), recorded(r))
     }
 }

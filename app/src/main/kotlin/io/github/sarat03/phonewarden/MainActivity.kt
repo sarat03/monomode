@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -23,6 +25,8 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
@@ -54,6 +58,7 @@ import phonewarden.engine.parseList
 import phonewarden.engine.pin
 import phonewarden.engine.unpin
 import phonewarden.engine.plan
+import phonewarden.engine.recorded
 import phonewarden.engine.restore
 import phonewarden.engine.restoreProfile
 
@@ -74,6 +79,11 @@ class MainActivity : ComponentActivity() {
         var activeMode by mutableStateOf<Profile?>(null)
         var others by mutableStateOf<List<Pair<String, String>>>(emptyList())
         var launcherPkgs by mutableStateOf<Set<String>>(emptySet())
+        var systemPkgs by mutableStateOf<Set<String>>(emptySet())
+        var query by mutableStateOf("")
+        val restorePick = mutableStateListOf<String>()
+        /** Mirrors the debloat record so the restore list redraws when it changes. */
+        var restoreItems by mutableStateOf<Map<String, Method>>(emptyMap())
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -86,6 +96,7 @@ class MainActivity : ComponentActivity() {
         paired = Pairing.isPaired(this)
         wirelessOn = Session.isWirelessDebuggingOn(this)
         activeMode = Profile.entries.firstOrNull { Records.mode(this, it).exists() }
+        restoreItems = recorded(Records.debloat(this))
     }
 
     override fun onDestroy() {
@@ -197,17 +208,39 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun FindingCard(f: Finding) =
-        Card(colors = if (f.level == Level.LOOK && !f.system) CardDefaults.cardColors(MaterialTheme.colorScheme.tertiaryContainer) else CardDefaults.cardColors()) {
+    private fun FindingCard(f: Finding) {
+        var show by remember { mutableStateOf(false) }
+        val grouped = f.apps.size > 3
+        Card(
+            colors = if (f.level == Level.LOOK && !f.system) CardDefaults.cardColors(MaterialTheme.colorScheme.tertiaryContainer) else CardDefaults.cardColors(),
+            modifier = if (grouped) Modifier.clickable { show = true } else Modifier,
+        ) {
             Column(Modifier.padding(12.dp)) {
                 Text(f.title, style = MaterialTheme.typography.titleSmall)
                 Text(f.detail, style = MaterialTheme.typography.bodyMedium)
+                if (grouped) Text("Tap to see all ${f.apps.size} apps", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             }
         }
+        if (show) AlertDialog(
+            onDismissRequest = { show = false },
+            confirmButton = { TextButton({ show = false }) { Text("Close") } },
+            title = { Text("${f.apps.size} apps") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // these share one Android user id, so the system cannot say which of them made the connection
+                    Text("They share one user id, so Android cannot tell which of them is doing it.", style = MaterialTheme.typography.bodySmall)
+                    for (pkg in f.apps.sortedBy { label(it).lowercase() }) Column {
+                        Text(label(pkg))
+                        if (label(pkg) != pkg) Text(pkg, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+        )
+    }
 
     @Composable
     private fun CleanupTab(s: Session) {
-        Text("Lists every app on this phone that you can turn off. Nothing is deleted; Restore brings everything back.")
+        Text("Lists the apps on this phone you can uninstall or disable. Restore below brings back any of them.")
         val c = cleanup
         if (c == null) {
             Button({
@@ -218,14 +251,16 @@ class MainActivity : ComponentActivity() {
                     selected.clear()
                     selected += entries.filter { it.risk == Risk.SAFE && it.pkg in p.todo }.map { it.pkg } // only safe pre-selected
                     launcherPkgs = launchableApps(s.shell).map { it.substringBefore("/") }.toSet()
+                    systemPkgs = s.shell.run(listOf("pm", "list", "packages", "-s")).lines().filter { it.startsWith("package:") }.map { it.drop(8).trim() }.toSet()
                     others = otherApps(s.shell, entries.map { it.pkg }.toSet(), packageName)
                         .map { it to label(it) }.sortedBy { it.second.lowercase() }
                     cleanup = entries to p
                 }
-            }, enabled = busy == null) { Text("Show what can be turned off") }
+            }, enabled = busy == null) { Text("Show apps") }
         } else {
             val (entries, p) = c
-            Text("Only turn off apps you recognise. Android's core apps are not listed, and the check after each batch undoes anything that breaks Home, calls or the keyboard.", style = MaterialTheme.typography.bodySmall)
+            Text("Only remove apps you recognise. Android's core apps are not listed, and the check after each batch undoes anything that breaks Home, calls or the keyboard.", style = MaterialTheme.typography.bodySmall)
+            OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), placeholder = { Text("Search apps") }, singleLine = true)
             if (p.already.isNotEmpty()) Text("Already off: ${p.already.size}")
             for (e in entries.filter { it.pkg in p.todo }) PickRow(e.pkg, label(e.pkg) + if (e.risk != Risk.SAFE) "  (${e.risk.name.lowercase()}: check you do not use it)" else "")
             val withIcon = launcherPkgs
@@ -239,24 +274,53 @@ class MainActivity : ComponentActivity() {
                     for ((pkg, name) in background) PickRow(pkg, name)
                 }
             }
+            // Uninstall only for built-in apps: their apk stays on the phone so Restore works; a Play Store app's is deleted
+            val playApps = selected.filterNot { it in systemPkgs }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button({ cleanupApply(s, Method.DISABLE) }, enabled = busy == null && selected.isNotEmpty()) { Text("Turn off ${selected.size}") }
-                OutlinedButton({ cleanupApply(s, Method.REMOVE) }, enabled = busy == null && selected.isNotEmpty()) { Text("Remove for this user") }
+                Button({ cleanupApply(s, Method.REMOVE) }, enabled = busy == null && selected.isNotEmpty() && playApps.isEmpty()) { Text("Uninstall ${selected.size}") }
+                OutlinedButton({ cleanupApply(s, Method.DISABLE) }, enabled = busy == null && selected.isNotEmpty()) { Text("Disable ${selected.size}") }
             }
-            Text("Use \"Remove for this user\" only for apps the phone refuses to turn off. The app stays on the phone and Restore brings it back.", style = MaterialTheme.typography.bodySmall)
+            if (playApps.isNotEmpty()) Text("${playApps.joinToString { label(it) }} came from the Play Store. PhoneWarden can only disable these; to uninstall one, use the Play Store, where you can reinstall it later.", style = MaterialTheme.typography.bodySmall)
+            else Text("Uninstall removes the app for you; the phone keeps a copy, so Restore brings it back. Disable leaves it installed but switched off.", style = MaterialTheme.typography.bodySmall)
         }
-        if (Records.debloat(this).exists()) OutlinedButton({
-            run("Restoring…") {
-                restore(s.shell, Records.debloat(applicationContext))
-                Records.debloat(applicationContext).delete()
-                cleanup = null
-                message = "Everything PhoneWarden turned off is back on."
+        RestoreList(s)
+    }
+
+    /** Everything PhoneWarden uninstalled or disabled, to bring back one by one. */
+    @Composable
+    private fun RestoreList(s: Session) {
+        val done = restoreItems
+        if (done.isEmpty()) return
+        Text("Restore", style = MaterialTheme.typography.titleMedium)
+        for ((pkg, method) in done.entries.sortedBy { label(it.key).lowercase() }) Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(pkg in restorePick, { on -> if (on) restorePick += pkg else restorePick -= pkg })
+            Column {
+                Text(label(pkg))
+                Text("${if (method == Method.REMOVE) "Uninstalled" else "Disabled"} · $pkg", style = MaterialTheme.typography.bodySmall)
             }
-        }, enabled = busy == null) { Text("Restore everything") }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button({
+                run("Restoring…") {
+                    val n = restorePick.size
+                    restore(s.shell, Records.debloat(applicationContext), only = restorePick.toSet())
+                    restorePick.clear(); cleanup = null
+                    restoreItems = recorded(Records.debloat(applicationContext))
+                    message = "$n app${if (n == 1) " is" else "s are"} back."
+                }
+            }, enabled = busy == null && restorePick.isNotEmpty()) { Text("Restore ${restorePick.size}") }
+            TextButton({ restorePick.clear(); restorePick += done.keys }, enabled = busy == null) { Text("Select all") }
+        }
     }
 
     @Composable
-    private fun PickRow(pkg: String, text: String) = Row(verticalAlignment = Alignment.CenterVertically) {
+    private fun PickRow(pkg: String, text: String) {
+        if (query.isNotBlank() && !text.contains(query, true) && !pkg.contains(query, true)) return
+        PickRowShown(pkg, text)
+    }
+
+    @Composable
+    private fun PickRowShown(pkg: String, text: String) = Row(verticalAlignment = Alignment.CenterVertically) {
         Checkbox(pkg in selected, { on -> if (on) selected += pkg else selected -= pkg })
         Column {
             Text(text)
@@ -272,13 +336,15 @@ class MainActivity : ComponentActivity() {
         val record = Records.debloat(applicationContext)
         try {
             apply(s.shell, Plan(todo = selected.toList()), record, dryRun = false, method = method)
-            message = "Done: ${selected.size} apps. Restore record saved to ${Records.copyToDownloads(applicationContext, record)}."
+            message = "${if (method == Method.REMOVE) "Uninstalled" else "Disabled"} ${selected.size} app${if (selected.size == 1) "" else "s"}. A copy of the restore list is in ${Records.copyToDownloads(applicationContext, record)}."
+            selected.clear()
         } catch (e: HealthException) {
-            message = "Stopped: Home, phone or keyboard stopped working after a batch, so that batch was undone. Earlier batches stay off."
+            message = "Stopped: Home, phone or keyboard stopped working after a batch, so that batch was undone. Earlier batches stay uninstalled or disabled; Restore lists them."
         } catch (e: Exception) {
-            message = "Stopped and undid the last batch: ${e.message}. If the phone refused to turn an app off, try \"Remove for this user\"."
+            message = "Stopped and undid the last batch: ${e.message}. If the phone refused to disable an app, try Uninstall."
         } finally {
             if (record.exists()) runCatching { Records.copyToDownloads(applicationContext, record) }
+            restoreItems = recorded(record)
             cleanup = null
         }
     }

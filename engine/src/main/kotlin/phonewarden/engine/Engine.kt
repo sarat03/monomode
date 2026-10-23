@@ -112,6 +112,11 @@ private fun writeRecord(record: File, entries: Map<String, Method>) {
  */
 fun apply(sh: Shell, p: Plan, record: File, dryRun: Boolean = true, batch: Int = 5, method: Method = Method.DISABLE): Plan {
     if (dryRun) return p
+    if (method == Method.REMOVE) {
+        // only a built-in app's apk survives pm uninstall --user 0; a Play Store app's is deleted and cannot be restored
+        val notBuiltIn = p.todo - sh.pkgs("-s")
+        require(notBuiltIn.isEmpty()) { "only apps built into the phone can be removed and restored; not: ${notBuiltIn.joinToString()}" }
+    }
     val done = readEntries(record).toMutableMap()
     for (chunk in p.todo.chunked(batch)) {
         try {
@@ -131,8 +136,18 @@ fun apply(sh: Shell, p: Plan, record: File, dryRun: Boolean = true, batch: Int =
     return p
 }
 
-fun restore(sh: Shell, record: File) {
-    for ((pkg, method) in readEntries(record)) if (PKG_RE.matches(pkg)) sh.run(method.undo(pkg))
+/** What PhoneWarden uninstalled or disabled, and how, for the restore list. */
+fun recorded(record: File): Map<String, Method> = readEntries(record)
+
+/** Brings back [only] (default: everything) and keeps the rest in the record; deletes the record once empty. */
+fun restore(sh: Shell, record: File, only: Set<String>? = null) {
+    val left = readEntries(record).toMutableMap()
+    for ((pkg, method) in left.toMap()) {
+        if (only != null && pkg !in only) continue
+        if (PKG_RE.matches(pkg)) sh.run(method.undo(pkg))
+        left -= pkg
+        if (left.isEmpty()) record.delete() else writeRecord(record, left) // after each app, so a failure keeps the rest
+    }
 }
 
 /** Packages we disabled that are enabled again (usually after an OTA). */
