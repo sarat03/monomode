@@ -29,8 +29,16 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Tab
-import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedCard
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -180,32 +188,86 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun SessionScreen(s: Session) = Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        PrimaryTabRow(tab) {
-            listOf("Check", "Clean up", "Modes").forEachIndexed { i, t -> Tab(tab == i, { tab = i }, text = { Text(t) }) }
-        }
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             when (tab) {
-                0 -> CheckTab(s)
-                1 -> CleanupTab(s)
+                0 -> HomeTab(s)
+                1 -> CheckTab(s)
+                2 -> CleanupTab(s)
                 else -> ModesTab(s)
             }
         }
-        Button({
-            run("Switching off Wireless debugging…") {
-                val off = s.finish(applicationContext)
-                session = null; results = null; cleanup = null
-                wirelessOn = Session.isWirelessDebuggingOn(applicationContext)
-                message = if (off) "Done. Wireless debugging is off (checked)."
-                else "Wireless debugging may still be on. Turn it off in Developer options."
+        NavigationBar {
+            listOf(
+                "Home" to Icons.Outlined.Home, "Check" to Icons.Outlined.Search,
+                "Clean up" to Icons.Outlined.Delete, "Modes" to Icons.Outlined.Settings,
+            ).forEachIndexed { i, (t, icon) ->
+                NavigationBarItem(tab == i, { tab = i }, { Icon(icon, null) }, label = { Text(t) })
             }
-        }, Modifier.fillMaxWidth(), enabled = busy == null) { Text("Finish and switch off Wireless debugging") }
+        }
+    }
+
+    private fun finish(s: Session) = run("Switching off Wireless debugging…") {
+        val off = s.finish(applicationContext)
+        session = null; results = null; cleanup = null
+        wirelessOn = Session.isWirelessDebuggingOn(applicationContext)
+        message = if (off) "Done. Wireless debugging is off (checked)."
+        else "Wireless debugging may still be on. Turn it off in Developer options."
+    }
+
+    /** One answer first, then a row per area with its state; the way to finish stays in sight. */
+    @Composable
+    private fun HomeTab(s: Session) {
+        val r = results
+        val look = r?.count { it.level == Level.LOOK && !it.system } ?: 0
+        val (bg, fg) = if (r != null && look == 0) MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
+            else MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
+        Text("PhoneWarden", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Card(colors = CardDefaults.cardColors(bg, fg), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    when { r == null -> "Not checked yet"; look == 0 -> "Looks safe"; else -> "$look thing${if (look == 1) "" else "s"} to look at" },
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                Text(if (r == null) "Run a check to see what can reach this phone." else "Checked just now. The check only reads; it changes nothing.")
+            }
+        }
+        HomeRow("Check", if (r == null) "Not run yet" else if (look == 0) "Nothing to look at" else "$look to look at") { tab = 1 }
+        HomeRow("Clean up", if (restoreItems.isEmpty()) "Nothing removed" else "${restoreItems.size} removed or disabled") { tab = 2 }
+        HomeRow("Modes", activeMode?.let { "${it.label} is on" } ?: "None on") { tab = 3 }
+        Card(colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant), modifier = Modifier.fillMaxWidth()) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Wireless debugging is on", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                TextButton({ finish(s) }, enabled = busy == null) { Text("Finish") }
+            }
+        }
+    }
+
+    @Composable
+    private fun HomeRow(title: String, state: String, open: () -> Unit) = OutlinedCard(Modifier.fillMaxWidth().clickable(onClick = open)) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                Text(state, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 
     @Composable
     private fun CheckTab(s: Session) {
-        Text("Looks at what can reach this phone and what apps have special access. Read-only: it changes nothing.")
-        Button({ run("Checking…") { results = s.check(applicationContext) } }, enabled = busy == null) { Text(if (results == null) "Check this phone" else "Check again") }
-        val (system, own) = (results ?: return).sortedBy { it.level }.partition { it.system }
+        val r = results
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Check", style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    if (r == null) "What can reach this phone, and which apps have special access. Read-only."
+                    else "${r.count { it.level == Level.LOOK && !it.system }} to look at, ${r.count { it.level == Level.INFO && !it.system }} for your information",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            TextButton({ run("Checking…") { results = s.check(applicationContext) } }, enabled = busy == null) { Text(if (r == null) "Check" else "Check again") }
+        }
+        val (system, own) = (r ?: return).sortedBy { it.level }.partition { it.system }
         own.forEach { FindingCard(it) }
         if (system.isNotEmpty()) {
             var open by remember { mutableStateOf(false) }
@@ -223,9 +285,9 @@ class MainActivity : ComponentActivity() {
     private fun FindingCard(f: Finding) {
         var show by remember { mutableStateOf(false) }
         val grouped = f.apps.size > 3
-        Card(
-            colors = if (f.level == Level.LOOK && !f.system) CardDefaults.cardColors(MaterialTheme.colorScheme.tertiaryContainer) else CardDefaults.cardColors(),
-            modifier = if (grouped) Modifier.clickable { show = true } else Modifier,
+        OutlinedCard(
+            modifier = (if (grouped) Modifier.clickable { show = true } else Modifier).fillMaxWidth(),
+            border = if (f.level == Level.LOOK && !f.system) BorderStroke(1.5.dp, MaterialTheme.colorScheme.tertiary) else CardDefaults.outlinedCardBorder(),
         ) {
             Column(Modifier.padding(12.dp)) {
                 Text(f.title, style = MaterialTheme.typography.titleSmall)
@@ -366,14 +428,29 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun ModesTab(s: Session) {
         val on = activeMode
-        Text("A mode changes a few settings for one job; untick any you want left alone. Turning it off puts your own settings back exactly as they were.")
-        ModeCard("Kiosk", "One app pinned to the screen. Muting still lets alarms ring. Use Clean up too to remove distractions.", Profile.KIOSK, s, on)
-        ModeCard("E-reader", "For reading, we recommend KOReader (free, on F-Droid).", Profile.E_READER, s, on)
-        if (on == Profile.KIOSK) PinPicker(s)
+        var shown by remember { mutableStateOf(on ?: Profile.KIOSK) }
+        Text("Modes", style = MaterialTheme.typography.headlineSmall)
+        Text("A mode changes a few settings for one job. Turning it off puts your own settings back exactly as they were.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            for (p in Profile.entries) OutlinedCard(
+                Modifier.weight(1f).clickable { shown = p },
+                border = if (p == shown) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else CardDefaults.outlinedCardBorder(),
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Text(p.label, style = MaterialTheme.typography.titleMedium)
+                    Text(if (p == on) "On" else "Off", color = if (p == on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        when (shown) {
+            Profile.KIOSK -> ModeCard("Kiosk", "A few apps on a simple home screen, or one app pinned. Muting still lets alarms ring.", Profile.KIOSK, s, on)
+            Profile.E_READER -> ModeCard("E-reader", "A paper-like home screen that opens your reading app. KOReader and ReadEra are good free readers.", Profile.E_READER, s, on)
+        }
+        if (on == Profile.KIOSK && shown == Profile.KIOSK) PinPicker(s)
     }
 
     @Composable
-    private fun ModeCard(name: String, what: String, profile: Profile, s: Session, on: Profile?) = Card {
+    private fun ModeCard(name: String, what: String, profile: Profile, s: Session, on: Profile?) = OutlinedCard(Modifier.fillMaxWidth()) {
         val off = remember { mutableStateListOf(*modes.off(profile).toTypedArray()) }
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -393,13 +470,15 @@ class MainActivity : ComponentActivity() {
                 }
             }, enabled = busy == null && (on == null || on == profile))
         }
+        Text("Changes", Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         for (option in profile.options.keys) Row(Modifier.padding(horizontal = 12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(option !in off, { keep ->
+            Text(option, Modifier.weight(1f))
+            Switch(option !in off, { keep ->
                 if (keep) off -= option else off += option
                 modes.setOff(profile, off.toSet())
             }, enabled = on == null)
-            Text(option)
         }
+        if (on == profile) Text("Turn the mode off to change these.", Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.bodySmall)
         if ("Own home screen" !in off) HomePicker(profile)
     }
 

@@ -20,6 +20,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Column
@@ -133,12 +134,16 @@ class HomeActivity : ComponentActivity() {
             Text(DateFormat.getDateInstance(DateFormat.FULL).format(now), color = ink, fontFamily = serif, fontSize = 18.sp)
             Spacer(Modifier.height(40.dp))
             if (main == null) Text("No reading app found. Install one (ReadEra, KOReader…) or choose it in PhoneWarden, under E-reader mode.", color = ink, fontFamily = serif, fontSize = 20.sp)
-            else Column(
-                Modifier.fillMaxWidth().border(2.dp, ink).clickable { open(main.pkg) }.padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+            else Row(
+                Modifier.fillMaxWidth().border(2.dp, ink).clickable { open(main.pkg) }.padding(20.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Continue reading", color = ink, fontFamily = serif, fontSize = 28.sp)
-                Text(main.label, color = ink, fontFamily = serif, fontSize = 18.sp)
+                // a book outline, like the cover slot on a Kobo or Kindle home screen
+                Box(Modifier.size(56.dp, 80.dp).border(1.5.dp, ink))
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Continue reading", color = ink, fontFamily = serif, fontSize = 26.sp)
+                    Text(main.label, color = ink, fontFamily = serif, fontSize = 18.sp)
+                }
             }
             Spacer(Modifier.height(32.dp))
             for (a in apps) {
@@ -172,7 +177,10 @@ class HomeActivity : ComponentActivity() {
             LazyVerticalGrid(GridCells.Adaptive(icon + 32.dp), Modifier.weight(1f).padding(top = 32.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                 items(apps, key = { it.pkg }) { a ->
                     Column(Modifier.clickable { open(a.pkg) }.padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Image(a.icon, a.label, Modifier.size(icon).clip(RoundedCornerShape(22)))
+                        // plain tile behind the app's own icon (design A): calm, and hides the white squares of older icons
+                        Box(Modifier.size(icon + 16.dp).clip(RoundedCornerShape(24)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                            Image(a.icon, a.label, Modifier.size(icon).clip(RoundedCornerShape(22)))
+                        }
                         Text(a.label, Modifier.padding(top = 6.dp), color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
