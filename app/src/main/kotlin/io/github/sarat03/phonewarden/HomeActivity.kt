@@ -113,7 +113,11 @@ class HomeActivity : ComponentActivity() {
     // each app in its own task, like any launcher: Home clears this screen's task, and anything started
     // inside it would be closed too (PhoneWarden's screen closing ends the session and turns off Wireless debugging)
     private fun open(pkg: String) = packageManager.getLaunchIntentForPackage(pkg)?.let { startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-    private fun openPhoneWarden() = startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    // lands on the Modes page, where the mode is turned off; CLEAR_TOP|SINGLE_TOP reaches a running copy through onNewIntent
+    private fun openPhoneWarden() = startActivity(
+        Intent(this, MainActivity::class.java).putExtra(Page.EXTRA, Page.MODES)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+    )
 
     private fun battery(): Int =
         registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1

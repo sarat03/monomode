@@ -30,15 +30,19 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.foundation.BorderStroke
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.selection.selectable
@@ -83,6 +87,12 @@ import phonewarden.engine.Risk
 import phonewarden.engine.parseList
 import phonewarden.engine.pin
 
+/** The pages Home leads to; [EXTRA] in an intent opens one directly. */
+object Page {
+    const val EXTRA = "page"
+    const val HOME = 0; const val CHECK = 1; const val CLEAN = 2; const val MODES = 3; const val SETTINGS = 4
+}
+
 class MainActivity : ComponentActivity() {
     // Process-wide, not per activity: Android recreates the activity on config changes (battery saver
     // turns on dark theme), and an open session must survive that or Wireless debugging is left on.
@@ -115,8 +125,16 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        openPage(intent)
         setContent { AppTheme { Surface(Modifier.fillMaxSize()) { Screen() } } }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        openPage(intent)
+    }
+
+    private fun openPage(i: Intent?) { i?.getIntExtra(Page.EXTRA, -1)?.takeIf { it >= 0 }?.let { tab = it } }
 
     override fun onResume() {
         super.onResume()
@@ -176,11 +194,12 @@ class MainActivity : ComponentActivity() {
     private fun Screen() {
         val snack = remember { SnackbarHostState() }
         LaunchedEffect(toast) { toast?.let { snack.showSnackbar(it); toast = null } }
-        Scaffold(snackbarHost = { SnackbarHost(snack, Modifier.padding(bottom = if (session != null) 88.dp else 0.dp)) } /* above the bottom bar */, contentWindowInsets = WindowInsets(0)) { pad -> Column(Modifier.padding(pad).safeDrawingPadding().padding(16.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Scaffold(snackbarHost = { SnackbarHost(snack) }, contentWindowInsets = WindowInsets(0)) { pad -> Column(Modifier.padding(pad).safeDrawingPadding().padding(16.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             busy?.let { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(it, style = MaterialTheme.typography.bodyMedium) } }
             message?.let { Note(it) }
             val s = session
             when {
+                tab == Page.SETTINGS -> Paged("Settings") { SettingsPage() }
                 s != null -> SessionScreen(s)
                 !paired -> PairScreen()
                 else -> StartScreen()
@@ -190,7 +209,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun PairScreen() = Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("PhoneWarden", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        AppHeader()
         Text("Set up once", style = MaterialTheme.typography.headlineSmall)
         Text("PhoneWarden talks to this phone over Wireless debugging. Pair it once; after that it connects by itself.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Steps(
@@ -208,7 +227,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun StartScreen() = Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("PhoneWarden", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        AppHeader()
         Card(colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(if (wirelessOn) "Ready to check" else "Not connected", style = MaterialTheme.typography.headlineSmall)
@@ -223,6 +242,13 @@ class MainActivity : ComponentActivity() {
         activeMode?.let { HomeRowStatic("Modes", "${it.label} is on. Connect to change or turn it off.") }
     }
 
+    /** App name on the left, settings gear on the right. */
+    @Composable
+    private fun AppHeader() = Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("PhoneWarden", Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+        IconButton({ tab = Page.SETTINGS }) { Icon(Icons.Outlined.Settings, "Settings") }
+    }
+
     @Composable
     private fun HomeRowStatic(title: String, state: String) = OutlinedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp)) {
@@ -232,22 +258,43 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun SessionScreen(s: Session) = Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            when (tab) {
-                0 -> HomeTab(s)
-                1 -> CheckTab(s)
-                2 -> CleanupTab(s)
-                else -> ModesTab(s)
-            }
+    private fun SessionScreen(s: Session) = when (tab) {
+        Page.CHECK -> Paged("Check") { CheckTab(s) }
+        Page.CLEAN -> Paged("Clean up") { CleanupTab(s) }
+        Page.MODES -> Paged("Modes") { ModesTab(s) }
+        else -> Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) { HomeTab(s) }
+    }
+
+    /** A page under Home: back arrow and title on top; Android's Back also returns to Home. */
+    @Composable
+    private fun Paged(title: String, content: @Composable () -> Unit) = Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        BackHandler { tab = Page.HOME }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton({ tab = Page.HOME }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to home") }
+            Text(title, Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineSmall)
         }
-        NavigationBar {
-            listOf(
-                "Home" to Icons.Outlined.Home, "Check" to Icons.Outlined.Search,
-                "Clean up" to Icons.Outlined.Delete, "Modes" to Icons.Outlined.Settings,
-            ).forEachIndexed { i, (t, icon) ->
-                NavigationBarItem(tab == i, { tab = i }, { Icon(icon, null) }, label = { Text(t) })
-            }
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) { content() }
+    }
+
+    /** App settings, reachable from the gear on Home, with or without a session. */
+    @Composable
+    private fun SettingsPage() {
+        SettingRow("Pairing", if (paired) "This phone is paired with PhoneWarden." else "Not paired yet.") {
+            if (paired) OutlinedButton({ Pairing.forget(applicationContext); paired = false; session?.let { s -> thread { runCatching { s.close() } } }; session = null; tab = Page.HOME; toast = "Pairing forgotten. Pair again to continue." }) { Text("Forget and pair again") }
+        }
+        SettingRow("Restore lists", "Each clean up saves a copy of its restore list in Downloads/PhoneWarden, so apps can be brought back even after reinstalling PhoneWarden.")
+        SettingRow("Appearance", "Follows the phone's light or dark setting.")
+        SettingRow("About", "PhoneWarden ${packageManager.getPackageInfo(packageName, 0).versionName}. Open source, MIT licence.") {
+            OutlinedButton({ startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/sarat03/phonewarden"))) }) { Text("Source code") }
+        }
+    }
+
+    @Composable
+    private fun SettingRow(title: String, text: String, action: (@Composable () -> Unit)? = null) = OutlinedCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium)
+            Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            action?.invoke()
         }
     }
 
@@ -265,22 +312,23 @@ class MainActivity : ComponentActivity() {
         val look = r?.count { it.level == Level.LOOK && !it.system } ?: 0
         val tone = when { r == null -> Tone(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant); look == 0 -> safeTone(); else -> warnTone() }
         val (bg, fg) = tone.bg to tone.fg
-        Text("PhoneWarden", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        AppHeader()
         Card(colors = CardDefaults.cardColors(bg, fg), modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Icon(if (r != null && look == 0) Icons.Outlined.CheckCircle else Icons.Outlined.Info, null)
                     Text(
                         when { r == null -> "Not checked yet"; look == 0 -> "Looks safe"; else -> "$look thing${if (look == 1) "" else "s"} to look at" },
+                        Modifier.semantics { heading() },
                         style = MaterialTheme.typography.headlineSmall,
                     )
                 }
                 Text(if (r == null) "Run a check to see what can reach this phone." else "Checked just now. The check only reads; it changes nothing.")
             }
         }
-        HomeRow(Icons.Outlined.Search, "Check", if (r == null) "Not run yet" else if (look == 0) "Nothing to look at" else "$look to look at") { tab = 1 }
-        HomeRow(Icons.Outlined.Delete, "Clean up", if (restoreItems.isEmpty()) "Nothing removed" else "${restoreItems.size} removed or disabled") { tab = 2 }
-        HomeRow(Icons.Outlined.Settings, "Modes", activeMode?.let { "${it.label} is on" } ?: "None on") { tab = 3 }
+        HomeRow(Icons.Outlined.Search, "Check", if (r == null) "Not run yet" else if (look == 0) "Nothing to look at" else "$look to look at") { tab = Page.CHECK }
+        HomeRow(Icons.Outlined.Delete, "Clean up", if (restoreItems.isEmpty()) "Nothing removed" else "${restoreItems.size} removed or disabled") { tab = Page.CLEAN }
+        HomeRow(Icons.Outlined.Lock, "Modes", activeMode?.let { "${it.label} is on" } ?: "None on") { tab = Page.MODES }
         val w = warnTone()
         Card(colors = CardDefaults.cardColors(w.bg, w.fg), modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -308,7 +356,6 @@ class MainActivity : ComponentActivity() {
         val r = results
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Check", style = MaterialTheme.typography.headlineSmall)
                 Text(
                     if (r == null) "What can reach this phone, and which apps have special access. Read-only."
                     else r.count { it.level == Level.LOOK && !it.system }.let { look ->
@@ -353,10 +400,10 @@ class MainActivity : ComponentActivity() {
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     // these share one Android user id, so the system cannot say which of them made the connection
-                    Text("They share one user id, so Android cannot tell which of them is doing it.", style = MaterialTheme.typography.bodySmall)
+                    Text("They share one user id, so Android cannot tell which of them is doing it.", style = MaterialTheme.typography.bodyMedium)
                     for (pkg in f.apps.sortedBy { label(it).lowercase() }) Column {
                         Text(label(pkg))
-                        if (label(pkg) != pkg) Text(pkg, style = MaterialTheme.typography.bodySmall)
+                        if (label(pkg) != pkg) Text(pkg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             },
@@ -365,7 +412,6 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun CleanupTab(s: Session) {
-        Text("Clean up", style = MaterialTheme.typography.headlineSmall)
         Text("Uninstall or disable apps you don't use. Restore below brings back any of them.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         val c = cleanup
         if (c == null) {
@@ -385,8 +431,8 @@ class MainActivity : ComponentActivity() {
             }, enabled = busy == null) { Text("Show apps") }
         } else {
             val (entries, p) = c
-            Text("Only remove apps you recognise. Android's core apps are not listed, and the check after each batch undoes anything that breaks Home, calls or the keyboard.", style = MaterialTheme.typography.bodySmall)
-            OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), placeholder = { Text("Search apps") }, singleLine = true)
+            Text("Only remove apps you recognise. Android's core apps are not listed, and the check after each batch undoes anything that breaks Home, calls or the keyboard.", style = MaterialTheme.typography.bodyMedium)
+            OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), label = { Text("Search apps") }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true)
             if (p.already.isNotEmpty()) Text("Already off: ${p.already.size}")
             for (e in entries.filter { it.pkg in p.todo }) PickRow(e.pkg, label(e.pkg) + if (e.risk != Risk.SAFE) "  (${e.risk.name.lowercase()}: check you do not use it)" else "")
             val withIcon = launcherPkgs
@@ -400,8 +446,8 @@ class MainActivity : ComponentActivity() {
                     Text("Background services you chose", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     for ((pkg, name) in chosen) PickRowShown(pkg, name)
                 }
-                ListRow("Background services", "${background.size} without an icon · ${if (chosen.isEmpty()) "add some" else "${chosen.size} chosen, add more"}") { open = true }
-                if (open) ListDialog("Background services", "These run without an icon. Many are needed by the phone; leave them unless you know what one does.", { open = false }, search = true) { q ->
+                ListRow("Background services", "${background.size} found · ${if (chosen.isEmpty()) "add some" else "${chosen.size} chosen, add more"}") { open = true }
+                if (open) ListDialog("Background services", "Parts of apps and of Android that run in the background and have no screen you can open. Many are needed by the phone; leave them unless you know what one does.", { open = false }, search = true) { q ->
                     items(background.filter { it.matches(q) }, key = { it.first }) { (pkg, name) -> PickRowShown(pkg, name) }
                 }
             }
@@ -411,8 +457,8 @@ class MainActivity : ComponentActivity() {
                 Button({ cleanupApply(s, Method.REMOVE) }, enabled = busy == null && selected.isNotEmpty() && playApps.isEmpty()) { Text("Uninstall ${selected.size}") }
                 OutlinedButton({ cleanupApply(s, Method.DISABLE) }, enabled = busy == null && selected.isNotEmpty()) { Text("Disable ${selected.size}") }
             }
-            if (playApps.isNotEmpty()) Text("${playApps.joinToString { label(it) }} came from the Play Store. PhoneWarden can only disable these; to uninstall one, use the Play Store, where you can reinstall it later.", style = MaterialTheme.typography.bodySmall)
-            else Text("Uninstall removes the app for you; the phone keeps a copy, so Restore brings it back. Disable leaves it installed but switched off.", style = MaterialTheme.typography.bodySmall)
+            if (playApps.isNotEmpty()) Text("${playApps.joinToString { label(it) }} came from the Play Store. PhoneWarden can only disable these; to uninstall one, use the Play Store, where you can reinstall it later.", style = MaterialTheme.typography.bodyMedium)
+            else Text("Uninstall removes the app for you; the phone keeps a copy, so Restore brings it back. Disable leaves it installed but switched off.", style = MaterialTheme.typography.bodyMedium)
         }
         RestoreList(s)
     }
@@ -427,7 +473,7 @@ class MainActivity : ComponentActivity() {
             Checkbox(pkg in restorePick, { on -> if (on) restorePick += pkg else restorePick -= pkg })
             Column {
                 Text(label(pkg))
-                Text("${if (method == Method.REMOVE) "Uninstalled" else "Disabled"} · $pkg", style = MaterialTheme.typography.bodySmall)
+                Text("${if (method == Method.REMOVE) "Uninstalled" else "Disabled"} · $pkg", style = MaterialTheme.typography.bodyMedium)
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -451,11 +497,14 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun PickRowShown(pkg: String, text: String) = Row(Modifier.fillMaxWidth().toggleable(pkg in selected, role = Role.Checkbox) { if (it) selected += pkg else selected -= pkg }, verticalAlignment = Alignment.CenterVertically) {
+    private fun PickRowShown(pkg: String, text: String) = Row(
+        Modifier.fillMaxWidth().heightIn(min = 56.dp).toggleable(pkg in selected, role = Role.Checkbox) { if (it) selected += pkg else selected -= pkg }.padding(horizontal = 4.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
         Checkbox(pkg in selected, null) // the whole row toggles it, and reads as one checkbox to TalkBack
-        Column {
+        Column(Modifier.weight(1f)) {
             Text(text)
-            if (text != pkg) Text(pkg, style = MaterialTheme.typography.bodySmall)
+            if (text != pkg) Text(pkg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 
@@ -487,7 +536,6 @@ class MainActivity : ComponentActivity() {
     private fun ModesTab(s: Session) {
         val on = activeMode
         var shown by remember { mutableStateOf(on ?: Profile.KIOSK) }
-        Text("Modes", style = MaterialTheme.typography.headlineSmall)
         Text("A mode changes a few settings for one job. Turning it off puts your own settings back exactly as they were.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             for (p in Profile.entries) OutlinedCard(
@@ -514,7 +562,7 @@ class MainActivity : ComponentActivity() {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(name, style = MaterialTheme.typography.titleMedium)
                 Text(what)
-                if (on != null && on != profile) Text("Turn off ${on.label.lowercase()} mode first.", style = MaterialTheme.typography.bodySmall)
+                if (on != null && on != profile) Text("Turn off ${on.label.lowercase()} mode first.", style = MaterialTheme.typography.bodyMedium)
             }
             Switch(on == profile, { turnOn ->
                 if (turnOn) run("Turning on $name mode…") {
@@ -536,7 +584,7 @@ class MainActivity : ComponentActivity() {
                 modes.setOff(profile, off.toSet())
             }, enabled = on == null)
         }
-        if (on == profile) Text("Turn the mode off to change these.", Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.bodySmall)
+        if (on == profile) Text("Turn the mode off to change these.", Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.bodyMedium)
         if ("Own home screen" !in off) HomePicker(profile)
     }
 
@@ -553,8 +601,8 @@ class MainActivity : ComponentActivity() {
                 ListRow("Reading app", all.firstOrNull { it.first == reader }?.second ?: "None found: choose one") { choose = true }
                 if (choose) ListDialog("Reading app", "Opens from Continue reading.", { choose = false }, search = true) { q ->
                     items(all.filter { it.matches(q) }, key = { it.first }) { (pkg, label) ->
-                        Row(Modifier.fillMaxWidth().selectable(pkg == reader, role = Role.RadioButton) { reader = pkg; modes.setReader(pkg); choose = false }, verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(pkg == reader, null); AppIcon(pkg); Text(label, Modifier.padding(start = 10.dp))
+                        Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).selectable(pkg == reader, role = Role.RadioButton) { reader = pkg; modes.setReader(pkg); choose = false }, verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(pkg == reader, null); Spacer(Modifier.width(12.dp)); AppIcon(pkg); Text(label, Modifier.padding(start = 12.dp))
                         }
                     }
                 }
@@ -563,8 +611,8 @@ class MainActivity : ComponentActivity() {
             ListRow(if (profile == Profile.E_READER) "Other apps" else "Apps on the home screen", names.ifEmpty { "None chosen" }) { open = true }
             if (open) ListDialog(if (profile == Profile.E_READER) "Other apps" else "Apps on the home screen", null, { open = false }, search = true) { q ->
                 items(all.filter { it.matches(q) }, key = { it.first }) { (pkg, label) ->
-                    Row(Modifier.fillMaxWidth().toggleable(pkg in picked, role = Role.Checkbox) { if (it) picked += pkg else picked -= pkg; modes.setApps(profile, picked.toSet()) }, verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(pkg in picked, null); AppIcon(pkg); Text(label, Modifier.padding(start = 10.dp))
+                    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).toggleable(pkg in picked, role = Role.Checkbox) { if (it) picked += pkg else picked -= pkg; modes.setApps(profile, picked.toSet()) }, verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(pkg in picked, null); Spacer(Modifier.width(12.dp)); AppIcon(pkg); Text(label, Modifier.padding(start = 12.dp))
                     }
                 }
             }
@@ -635,8 +683,8 @@ class MainActivity : ComponentActivity() {
             title = { Text(title) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                    if (search) OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), placeholder = { Text("Search") }, singleLine = true)
+                    note?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                    if (search) OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), label = { Text("Search") }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true)
                     LazyColumn(Modifier.heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { items(q) }
                 }
             },

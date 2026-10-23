@@ -31,6 +31,9 @@ object Pairing {
 
     fun isPaired(ctx: Context) = prefs(ctx).getBoolean("paired", false)
 
+    /** Back to the pairing screen; the next pairing replaces this phone's trust in our key. */
+    fun forget(ctx: Context) = prefs(ctx).edit().putBoolean("paired", false).apply()
+
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("pairing", Context.MODE_PRIVATE)
 
     /** Shows the notification with a code field. [text] explains the next step. */
