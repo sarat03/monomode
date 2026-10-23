@@ -169,7 +169,7 @@ class MainActivity : ComponentActivity() {
                 // adbd dropped us, e.g. Wireless debugging went off when Wi-Fi changed or the phone slept
                 session?.close(); session = null
                 wirelessOn = Session.isWirelessDebuggingOn(applicationContext)
-                message = "The connection to this phone was lost. If Wireless debugging went off, turn it on again, then tap Check this phone."
+                message = "The connection to this phone was lost. If Wireless debugging went off, turn it on again, then tap Retry."
             } catch (e: Exception) { message = explain(e) } finally { busy = null }
         }
     }
@@ -239,7 +239,13 @@ class MainActivity : ComponentActivity() {
             }
         }
         if (!wirelessOn) Button(::openDeveloperOptions, Modifier.fillMaxWidth()) { Text("Open Developer options") }
-        else Button({ run("Connecting and checking this phone…") { val s = Session.open(applicationContext); session = s; results = s.check(applicationContext) } }, Modifier.fillMaxWidth(), enabled = busy == null) { Text("Check this phone") }
+        // Retry looks again for Wireless debugging, then connects and checks; only needed while it is off or after a failure,
+        // otherwise the app connects by itself
+        if (!wirelessOn || message != null) OutlinedButton({
+            wirelessOn = Session.isWirelessDebuggingOn(applicationContext)
+            if (!wirelessOn) toast = "Wireless debugging is still off"
+            else run("Connecting and checking this phone…") { val s = Session.open(applicationContext); session = s; results = s.check(applicationContext) }
+        }, Modifier.fillMaxWidth(), enabled = busy == null) { Text("Retry") }
         activeMode?.let { HomeRowStatic("Modes", "${it.label} is on. Connect to change or turn it off.") }
     }
 

@@ -46,6 +46,7 @@ class ProfileTest {
         assertEquals("0", sh.values["global window_animation_scale"])
         assertEquals("1", sh.values["global low_power"])
         assertEquals("1", sh.values["global low_power_sticky"]) // restored explicitly; turning low_power off leaves it set
+        assertEquals("0", sh.values["system power_save_screenoff_time_state"]) // realme's saver would cut the screen timeout to 30s
         assertEquals("1", sh.values["global zen_mode"]) // priority: total silence leaves the ringer silent after restore (seen on Android 14)
         restoreProfile(sh, r)
         assertEquals(start, sh.values) // release gate; unset ones deleted again

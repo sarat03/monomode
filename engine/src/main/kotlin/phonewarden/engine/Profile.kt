@@ -24,7 +24,12 @@ private val grayscale = listOf(
 private val noAnimations = listOf("window_animation_scale", "transition_animation_scale", "animator_duration_scale").map { Change("global", it, "0") }
 private val muted = Change(DND, "mode", DND_ON)
 // low_power alone leaves low_power_sticky=1 behind after restore, so Battery Saver would come back on its own
-private val batterySaver = listOf(Change("global", "low_power", "1"), Change("global", "low_power_sticky", "1"))
+// realme/Oppo's saver cuts the screen timeout to 30s (power_save_screenoff_time_state); keep the user's own while reading.
+// Set before low_power so the saver starts with it off. Absent on other phones: restore deletes it again.
+private val batterySaver = listOf(
+    Change("system", "power_save_screenoff_time_state", "0"),
+    Change("global", "low_power", "1"), Change("global", "low_power_sticky", "1"),
+)
 
 /**
  * Each mode is a set of named options the user can switch off one by one.
