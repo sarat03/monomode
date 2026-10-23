@@ -161,7 +161,9 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun PairScreen() = Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("First, let PhoneWarden talk to this phone. This happens once.")
+        Text("PhoneWarden", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Set up once", style = MaterialTheme.typography.headlineSmall)
+        Text("PhoneWarden talks to this phone over Wireless debugging. Pair it once; after that it connects by itself.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Steps(
             "Turn on Developer options if you have not (Settings > About phone > tap Build number 7 times).",
             "In Developer options, turn on Wireless debugging and open it.",
@@ -177,12 +179,26 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun StartScreen() = Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (!wirelessOn) {
-            Text("Turn on Wireless debugging in Developer options, then come back. PhoneWarden switches it off again when you finish.")
-            Button(::openDeveloperOptions) { Text("Open Developer options") }
-        } else {
-            Text("Wireless debugging is on. PhoneWarden will connect to this phone only, and switch Wireless debugging off when you finish.")
-            Button({ run("Connecting…") { session = Session.open(applicationContext) } }, enabled = busy == null) { Text("Start") }
+        Text("PhoneWarden", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Card(colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant), modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (wirelessOn) "Ready to check" else "Not connected", style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    if (wirelessOn) "PhoneWarden connects to this phone only, and switches Wireless debugging off when you finish."
+                    else "Turn on Wireless debugging, then come back. PhoneWarden checks the phone straight away and switches it off again when you finish.",
+                )
+            }
+        }
+        if (!wirelessOn) Button(::openDeveloperOptions, Modifier.fillMaxWidth()) { Text("Open Developer options") }
+        else Button({ run("Connecting and checking this phone…") { val s = Session.open(applicationContext); session = s; results = s.check(applicationContext) } }, Modifier.fillMaxWidth(), enabled = busy == null) { Text("Check this phone") }
+        activeMode?.let { HomeRowStatic("Modes", "${it.label} is on. Connect to change or turn it off.") }
+    }
+
+    @Composable
+    private fun HomeRowStatic(title: String, state: String) = OutlinedCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(state, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 
@@ -261,7 +277,11 @@ class MainActivity : ComponentActivity() {
                 Text("Check", style = MaterialTheme.typography.headlineSmall)
                 Text(
                     if (r == null) "What can reach this phone, and which apps have special access. Read-only."
-                    else "${r.count { it.level == Level.LOOK && !it.system }} to look at, ${r.count { it.level == Level.INFO && !it.system }} for your information",
+                    else r.count { it.level == Level.LOOK && !it.system }.let { look ->
+                        // the "Nothing stood out" note has no apps, so it is not counted as information
+                        val info = r.count { it.level == Level.INFO && !it.system && it.apps.isNotEmpty() }
+                        listOfNotNull(if (look == 0) "Nothing to look at" else "$look to look at", if (info > 0) "$info for your information" else null).joinToString(", ")
+                    },
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
