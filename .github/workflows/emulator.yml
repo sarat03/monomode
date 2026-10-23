@@ -30,7 +30,7 @@ jobs:
           script: |
             adb root && adb wait-for-device && adb shell setprop persist.adb.tls_server.enable 1 && sleep 5
             echo "tls port: $(adb shell getprop service.adb.tls.port)"
-            gradle :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.connectPort=$(adb shell getprop service.adb.tls.port | tr -d '\r') -Pandroid.testInstrumentationRunnerArguments.notClass=io.github.sarat03.phonewarden.tls.RealAdbdWirelessOffTest
+            gradle :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.connectPort=$(adb shell getprop service.adb.tls.port | tr -d '\r') -Pandroid.testInstrumentationRunnerArguments.notClass=io.github.sarat03.monomode.tls.RealAdbdWirelessOffTest
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

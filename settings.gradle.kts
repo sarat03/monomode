@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "phonewarden"
+rootProject.name = "monomode"
 include("adb", "engine", "app")

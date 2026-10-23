@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "io.github.sarat03.phonewarden"
+    namespace = "io.github.sarat03.monomode"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "io.github.sarat03.phonewarden"
+        applicationId = "io.github.sarat03.monomode"
         minSdk = 30 // Wireless debugging needs Android 11 (ADR 0003)
         targetSdk = 37
         versionCode = 1

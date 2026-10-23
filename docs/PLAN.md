@@ -1,6 +1,6 @@
 # Plan
 
-PhoneWarden: an Android app that keeps old phones safe and useful, for people who never open a terminal.
+MonoMode: an Android app that keeps old phones safe and useful, for people who never open a terminal.
 
 ## Product
 - Android 11+ app. Talks to its own phone through Wireless debugging with our own ADB client.

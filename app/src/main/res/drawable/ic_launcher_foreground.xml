@@ -1,11 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- shield with a tick, inside the 66dp safe zone of the 108dp adaptive icon -->
+<!-- MonoMode: a phone outline holding one dot (one phone, one mode), inside the 66dp safe zone of the 108dp adaptive icon -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="5"
+        android:pathData="M45,24 L63,24 A9,9 0 0 1 72,33 L72,75 A9,9 0 0 1 63,84 L45,84 A9,9 0 0 1 36,75 L36,33 A9,9 0 0 1 45,24 Z" />
     <path android:fillColor="#FFFFFF"
-        android:pathData="M54,28 L76,36 L76,52 C76,66 66.5,77 54,81 C41.5,77 32,66 32,52 L32,36 Z" />
-    <path android:strokeColor="#27500A" android:strokeWidth="5"
-        android:strokeLineCap="round" android:strokeLineJoin="round"
-        android:pathData="M44,54 L51,61 L65,46" />
+        android:pathData="M54,46 A8,8 0 1 1 54,62 A8,8 0 1 1 54,46 Z" />
 </vector>
