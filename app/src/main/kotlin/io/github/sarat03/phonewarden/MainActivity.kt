@@ -109,7 +109,13 @@ class MainActivity : ComponentActivity() {
     private fun run(label: String, work: () -> Unit) {
         busy = label; message = null
         thread {
-            try { work() } catch (e: Exception) { message = explain(e) } finally { busy = null }
+            try { work() } catch (e: java.io.IOException) {
+                if (e !is java.net.SocketException && e !is java.io.EOFException && e !is javax.net.ssl.SSLException) { message = explain(e); return@thread }
+                // adbd dropped us, e.g. Wireless debugging went off when Wi-Fi changed or the phone slept
+                session?.close(); session = null
+                wirelessOn = Session.isWirelessDebuggingOn(applicationContext)
+                message = "The connection to this phone was lost (Wireless debugging may have switched off). Turn it on again and tap Start."
+            } catch (e: Exception) { message = explain(e) } finally { busy = null }
         }
     }
 
@@ -123,7 +129,12 @@ class MainActivity : ComponentActivity() {
     }
 
     // own task, so opening PhoneWarden again brings back PhoneWarden, not Settings
-    private fun openDeveloperOptions() = startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    // the fragment_args_key extras make Settings scroll to and flash Wireless debugging (AOSP and realme UI)
+    private fun openDeveloperOptions() = startActivity(
+        Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            .putExtra(":settings:fragment_args_key", "toggle_adb_wireless")
+            .putExtra(":settings:show_fragment_args", Bundle().apply { putString(":settings:fragment_args_key", "toggle_adb_wireless") })
+    )
 
     @Composable
     private fun Screen() {
