@@ -116,5 +116,20 @@ class AdbConnectionTest {
         assertFailsWith<ProtocolException> { conn.disableWirelessDebugging() }
     }
 
+    @Test
+    fun `second command on one connection ignores a late CLSE for the first stream`() {
+        // seen on Android 14 emulator: adbd sends a second CLSE after we answer its CLSE
+        fun exit0(local: Int) = arrayOf(
+            AdbMessage(Command.OKAY, 7, local, ByteArray(0)), AdbMessage(Command.WRTE, 7, local, v2Pkt(1, "x".toByteArray()) + v2Pkt(3, byteArrayOf(0))),
+            AdbMessage(Command.CLSE, 7, local, ByteArray(0)),
+        )
+        val (conn, adbd) = connected(*exit0(1), AdbMessage(Command.CLSE, 7, 1, ByteArray(0)), *exit0(2))
+        conn.shellV2("echo a")
+        val before = adbd.sent.size()
+        assertEquals(ShellResult("x", "", 0), conn.shellV2("echo b"))
+        val open = AdbMessage(Command.OPEN, 2, 0, "shell,v2,raw:echo b\u0000".toByteArray()).encode()
+        assertEquals(open.hex(), adbd.sent.toByteArray().copyOfRange(before, before + open.size).hex())
+    }
+
     private fun ByteArray.hex() = joinToString("") { "%02x".format(it) }
 }

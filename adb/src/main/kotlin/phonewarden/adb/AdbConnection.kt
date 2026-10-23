@@ -8,6 +8,8 @@ interface AdbTransport {
 }
 
 class AdbConnection(private val transport: AdbTransport) {
+    private var lastLocalId = 0
+
     fun connect() {
         send(AdbMessage(Command.CNXN, A_VERSION, MAX_PAYLOAD, "host::".toByteArray()))
         if (receive().command == Command.STLS) {
@@ -27,8 +29,9 @@ class AdbConnection(private val transport: AdbTransport) {
         val out = java.io.ByteArrayOutputStream()
         val err = java.io.ByteArrayOutputStream()
         var exit: Int? = null
+        val ids = mutableListOf<Int>()
         while (buf.hasRemaining()) {
-            val id = buf.get().toInt()
+            val id = buf.get().toInt().also { ids += it }
             val data = ByteArray(buf.int).also { buf.get(it) }
             when (id) {
                 ID_STDOUT -> out.writeBytes(data)
@@ -36,7 +39,7 @@ class AdbConnection(private val transport: AdbTransport) {
                 ID_EXIT -> exit = data[0].toInt() and 0xff
             }
         }
-        return ShellResult(out.toString(Charsets.UTF_8), err.toString(Charsets.UTF_8), exit ?: throw ProtocolException("shell_v2 stream closed without exit code"))
+        return ShellResult(out.toString(Charsets.UTF_8), err.toString(Charsets.UTF_8), exit ?: throw ProtocolException("shell_v2 stream closed without exit code after ${buf.capacity()} bytes, packet ids $ids"))
     }
 
     /** adbd usually drops this very connection before replying, so the caller must verify the result itself. */
@@ -51,15 +54,17 @@ class AdbConnection(private val transport: AdbTransport) {
 
     // ponytail: buffers the whole stream before parsing; stream it when we run long or chatty commands.
     private fun readStream(service: String): ByteArray {
-        // ponytail: one stream at a time with fixed local id 1; multiplex when we need concurrent commands.
-        send(AdbMessage(Command.OPEN, LOCAL_ID, 0, "$service\u0000".toByteArray()))
+        // ponytail: one stream at a time; multiplex when we need concurrent commands.
+        val id = ++lastLocalId
+        send(AdbMessage(Command.OPEN, id, 0, "$service\u0000".toByteArray()))
         val out = java.io.ByteArrayOutputStream()
         while (true) {
             val m = receive()
+            if (m.arg1 != id) continue // late messages for an earlier stream, e.g. adbd's second CLSE
             when (m.command) {
                 Command.OKAY -> Unit
-                Command.WRTE -> { out.writeBytes(m.payload); send(AdbMessage(Command.OKAY, LOCAL_ID, m.arg0, ByteArray(0))) }
-                Command.CLSE -> { send(AdbMessage(Command.CLSE, LOCAL_ID, m.arg0, ByteArray(0))); return out.toByteArray() }
+                Command.WRTE -> { out.writeBytes(m.payload); send(AdbMessage(Command.OKAY, id, m.arg0, ByteArray(0))) }
+                Command.CLSE -> { send(AdbMessage(Command.CLSE, id, m.arg0, ByteArray(0))); return out.toByteArray() }
                 else -> throw ProtocolException("unexpected ${m.command} on shell stream")
             }
         }
@@ -77,7 +82,6 @@ class AdbConnection(private val transport: AdbTransport) {
         const val A_VERSION = 0x01000001
         const val MAX_PAYLOAD = 1024 * 1024
         const val A_STLS_VERSION = 0x01000000
-        private const val LOCAL_ID = 1
         private const val ID_STDOUT = 1
         private const val ID_STDERR = 2
         private const val ID_EXIT = 3

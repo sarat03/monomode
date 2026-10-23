@@ -13,6 +13,17 @@ fun interface Shell {
     fun run(args: List<String>): String
 }
 
+private val PLAIN_ARG = Regex("^[A-Za-z0-9._/:=,@+-]+$")
+
+/**
+ * adbd hands the shell service a string that sh parses, so argv is joined by spaces and any
+ * argument sh could interpret is refused. ponytail: no quoting; add it if an argument ever needs a space.
+ */
+fun commandLine(args: List<String>): String = args.joinToString(" ") { a ->
+    require(PLAIN_ARG.matches(a)) { "argument not safe for sh: $a" }
+    a
+}
+
 enum class Risk { SAFE, CAUTION, RISKY }
 
 data class Entry(val pkg: String, val risk: Risk)

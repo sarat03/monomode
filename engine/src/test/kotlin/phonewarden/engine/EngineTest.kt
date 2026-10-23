@@ -121,6 +121,14 @@ class EngineTest {
         assertEquals(listOf(listOf("pm", "enable", "com.a.b")), sh.calls)
     }
 
+    // command line for adbd, which runs it through sh
+    @Test fun `commandLine joins plain args`() =
+        assertEquals("pm disable-user --user 0 com.a.b", commandLine(listOf("pm", "disable-user", "--user", "0", "com.a.b")))
+
+    @Test fun `commandLine refuses anything sh would interpret`() {
+        for (bad in listOf("a b", "a;b", "\$(id)", "`id`", "a|b", "a>b", "a&b", "'a'", "\"a\"", "a\nb", "*", "~", "")) assertFailsWith<IllegalArgumentException>(bad) { commandLine(listOf("echo", bad)) }
+    }
+
     // drift
     @Test fun `reports re-enabled after update`() {
         val sh = FakeShell(listOf("com.a.b", "com.c.d")); val r = rec()
