@@ -51,17 +51,8 @@ import phonewarden.engine.Method
 import phonewarden.engine.Plan
 import phonewarden.engine.Profile
 import phonewarden.engine.Risk
-import phonewarden.engine.apply
-import phonewarden.engine.applyProfile
-import phonewarden.engine.launchableApps
-import phonewarden.engine.otherApps
 import phonewarden.engine.parseList
 import phonewarden.engine.pin
-import phonewarden.engine.unpin
-import phonewarden.engine.plan
-import phonewarden.engine.recorded
-import phonewarden.engine.restore
-import phonewarden.engine.restoreProfile
 
 class MainActivity : ComponentActivity() {
     // Process-wide, not per activity: Android recreates the activity on config changes (battery saver
@@ -87,6 +78,9 @@ class MainActivity : ComponentActivity() {
         var restoreItems by mutableStateOf<Map<String, Method>>(emptyMap())
     }
 
+    private val modes by lazy { Records.modes(applicationContext) }
+    private val debloat by lazy { Records.debloater(applicationContext) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent { AppTheme { Surface(Modifier.fillMaxSize()) { Screen() } } }
@@ -96,8 +90,8 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         paired = Pairing.isPaired(this)
         wirelessOn = Session.isWirelessDebuggingOn(this)
-        activeMode = Profile.entries.firstOrNull { Records.mode(this, it).exists() }
-        restoreItems = recorded(Records.debloat(this))
+        activeMode = modes.active
+        restoreItems = debloat.removed
     }
 
     override fun onDestroy() {
@@ -259,13 +253,13 @@ class MainActivity : ComponentActivity() {
                 run("Reading the app list…") {
                     // the phone's own app list, not a list per brand; generic.txt only adds notes for apps we know
                     val entries = parseList(assets.open("generic.txt").bufferedReader().readText())
-                    val p = plan(s.shell, entries, maxRisk = Risk.RISKY)
+                    val scan = debloat.scan(s.shell, entries, packageName)
+                    val p = scan.plan
                     selected.clear()
                     selected += entries.filter { it.risk == Risk.SAFE && it.pkg in p.todo }.map { it.pkg } // only safe pre-selected
-                    launcherPkgs = launchableApps(s.shell).map { it.substringBefore("/") }.toSet()
-                    systemPkgs = s.shell.run(listOf("pm", "list", "packages", "-s")).lines().filter { it.startsWith("package:") }.map { it.drop(8).trim() }.toSet()
-                    others = otherApps(s.shell, entries.map { it.pkg }.toSet(), packageName)
-                        .map { it to label(it) }.sortedBy { it.second.lowercase() }
+                    launcherPkgs = launcherApps(applicationContext).map { it.first }.toSet()
+                    systemPkgs = scan.system
+                    others = scan.others.map { it to label(it) }.sortedBy { it.second.lowercase() }
                     cleanup = entries to p
                 }
             }, enabled = busy == null) { Text("Show apps") }
@@ -315,9 +309,9 @@ class MainActivity : ComponentActivity() {
             Button({
                 run("Restoring…") {
                     val n = restorePick.size
-                    restore(s.shell, Records.debloat(applicationContext), only = restorePick.toSet())
+                    debloat.restore(s.shell, restorePick.toSet())
                     restorePick.clear(); cleanup = null
-                    restoreItems = recorded(Records.debloat(applicationContext))
+                    restoreItems = debloat.removed
                     message = "$n app${if (n == 1) " is" else "s are"} back."
                 }
             }, enabled = busy == null && restorePick.isNotEmpty()) { Text("Restore ${restorePick.size}") }
@@ -340,14 +334,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** App name, or the package name for apps Android does not let us see. */
-    private fun label(pkg: String) =
+    /** App name, or the package name for apps Android does not let us see. Cached: lists redraw on every search keystroke. */
+    private val labels = HashMap<String, String>()
+    private fun label(pkg: String) = labels.getOrPut(pkg) {
         runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)
+    }
 
     private fun cleanupApply(s: Session, method: Method) = run("Working in small batches, checking the phone after each…") {
-        val record = Records.debloat(applicationContext)
+        val record = debloat.record
         try {
-            apply(s.shell, Plan(todo = selected.toList()), record, dryRun = false, method = method)
+            debloat.remove(s.shell, selected.toList(), method)
             message = "${if (method == Method.REMOVE) "Uninstalled" else "Disabled"} ${selected.size} app${if (selected.size == 1) "" else "s"}. A copy of the restore list is in ${Records.copyToDownloads(applicationContext, record)}."
             selected.clear()
         } catch (e: HealthException) {
@@ -356,7 +352,7 @@ class MainActivity : ComponentActivity() {
             message = "Stopped and undid the last batch: ${e.message}. If the phone refused to disable an app, try Uninstall."
         } finally {
             if (record.exists()) runCatching { Records.copyToDownloads(applicationContext, record) }
-            restoreItems = recorded(record)
+            restoreItems = debloat.removed
             cleanup = null
         }
     }
@@ -372,8 +368,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun ModeCard(name: String, what: String, profile: Profile, s: Session, on: Profile?) = Card {
-        val prefs = getSharedPreferences("mode_options", MODE_PRIVATE)
-        val off = remember { mutableStateListOf(*prefs.getStringSet(profile.name, emptySet())!!.toTypedArray()) }
+        val off = remember { mutableStateListOf(*modes.off(profile).toTypedArray()) }
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(name, style = MaterialTheme.typography.titleMedium)
@@ -381,24 +376,21 @@ class MainActivity : ComponentActivity() {
                 if (on != null && on != profile) Text("Turn off ${on.label.lowercase()} mode first.", style = MaterialTheme.typography.bodySmall)
             }
             Switch(on == profile, { turnOn ->
-                val record = Records.mode(applicationContext, profile)
                 if (turnOn) run("Turning on $name mode…") {
-                    applyProfile(s.shell, profile, record, off.toSet())
-                    activeMode = profile
+                    modes.turnOn(s.shell, profile)
+                    activeMode = modes.active
                     message = "$name mode is on."
                 } else run("Turning off $name mode…") {
-                    if (profile == Profile.KIOSK) unpin(s.shell)
-                    restoreProfile(s.shell, record)
-                    activeMode = null
+                    modes.turnOff(s.shell)
+                    activeMode = modes.active
                     message = "$name mode is off. Your settings are back as they were."
                 }
             }, enabled = busy == null && (on == null || on == profile))
         }
-        // options can change only while the mode is off: the record holds what was applied
         for (option in profile.options.keys) Row(Modifier.padding(horizontal = 12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Checkbox(option !in off, { keep ->
                 if (keep) off -= option else off += option
-                prefs.edit().putStringSet(profile.name, off.toSet()).apply()
+                modes.setOff(profile, off.toSet())
             }, enabled = on == null)
             Text(option)
         }
@@ -409,21 +401,21 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun HomePicker(profile: Profile) {
         var open by remember { mutableStateOf(false) }
-        val picked = remember { mutableStateListOf(*homeApps(this, profile).toTypedArray()) }
+        val picked = remember { mutableStateListOf(*modes.apps(profile).toTypedArray()) }
         val all = remember { launcherApps(this) }
         if (profile == Profile.E_READER) {
-            var reader by remember { mutableStateOf(readingApp(this, all)) }
+            var reader by remember { mutableStateOf(modes.reader(all.map { it.first })) }
             var choose by remember { mutableStateOf(false) }
             val name = all.firstOrNull { it.first == reader }?.second ?: "none found"
             TextButton({ choose = !choose }, Modifier.padding(horizontal = 12.dp)) { Text("Reading app for Continue reading: $name ${if (choose) "▲" else "▼"}") }
             if (choose) for ((pkg, label) in all) Row(Modifier.padding(horizontal = 12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(pkg == reader, { reader = pkg; setReadingApp(this@MainActivity, pkg); choose = false })
+                RadioButton(pkg == reader, { reader = pkg; modes.setReader(pkg); choose = false })
                 Text(label)
             }
         }
         TextButton({ open = !open }, Modifier.padding(horizontal = 12.dp)) { Text("${if (profile == Profile.E_READER) "Other apps" else "Apps"} on the home screen (${picked.size}) ${if (open) "▲" else "▼"}") }
         if (open) for ((pkg, label) in all) Row(Modifier.padding(horizontal = 12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(pkg in picked, { if (it) picked += pkg else picked -= pkg; setHomeApps(this@MainActivity, profile, picked.toSet()) })
+            Checkbox(pkg in picked, { if (it) picked += pkg else picked -= pkg; modes.setApps(profile, picked.toSet()) })
             Text(label)
         }
     }
@@ -437,9 +429,10 @@ class MainActivity : ComponentActivity() {
         val list = apps
         if (list == null) OutlinedButton({
             run("Listing apps…") {
-                apps = launchableApps(s.shell).filterNot { it.startsWith(packageName) }
-                    .map { c -> c to runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(c.substringBefore("/"), 0)).toString() }.getOrDefault(c.substringBefore("/")) }
-                    .sortedBy { it.second.lowercase() }
+                // pin() starts a component; the launch intent names the app's own start screen
+                apps = launcherApps(applicationContext).mapNotNull { (pkg, label) ->
+                    packageManager.getLaunchIntentForPackage(pkg)?.component?.flattenToShortString()?.let { it to label }
+                }
             }
         }, enabled = busy == null) { Text("Choose an app to pin") }
         else for ((component, label) in list) OutlinedButton({

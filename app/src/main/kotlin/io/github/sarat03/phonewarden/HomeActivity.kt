@@ -61,12 +61,6 @@ import phonewarden.engine.Profile
 import java.text.DateFormat
 import java.util.Date
 
-/** Known reading apps, best first; used when the user has not chosen one. */
-private val READERS = listOf(
-    "org.readera", "org.readera.premium", "org.koreader.launcher", "com.flyersoft.moonreader", "com.flyersoft.moonreaderp",
-    "com.foobnix.pdf.reader", "com.amazon.kindle", "com.kobobooks.android", "com.google.android.apps.books",
-)
-
 /** The home screen while a mode with "Own home screen" is on, styled for that mode. */
 class HomeActivity : ComponentActivity() {
     private class App(val pkg: String, val label: String, val icon: ImageBitmap)
@@ -74,6 +68,8 @@ class HomeActivity : ComponentActivity() {
     private var apps by mutableStateOf<List<App>>(emptyList())
     private var mode by mutableStateOf<Profile?>(null)
     private var reader by mutableStateOf<App?>(null)
+    /** Drawn once per app; the screen reloads on every return from an app. shortcut: an updated app keeps its old icon until the home screen restarts. */
+    private val icons = HashMap<String, ImageBitmap>()
     private var now by mutableStateOf(Date())
     /** Set by a Home press; a single kiosk app opens then, but not when the user comes Back from it. */
     private var homePressed = true
@@ -100,12 +96,13 @@ class HomeActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        mode = Profile.entries.firstOrNull { Records.mode(this, it).exists() }
-        val picked = mode?.let { homeApps(this, it) }.orEmpty()
+        val modes = Records.modes(this)
+        mode = modes.active
+        val picked = mode?.let { modes.apps(it) }.orEmpty()
         val pm = packageManager
         val all = launcherApps(this)
-        fun app(p: Pair<String, String>) = App(p.first, p.second, pm.getApplicationIcon(p.first).toBitmap((120 * resources.displayMetrics.density).toInt()))
-        val readerPkg = readingApp(this, all)
+        fun app(p: Pair<String, String>) = App(p.first, p.second, icons.getOrPut(p.first) { pm.getApplicationIcon(p.first).toBitmap((120 * resources.displayMetrics.density).toInt()) })
+        val readerPkg = modes.reader(all.map { it.first })
         reader = all.firstOrNull { it.first == readerPkg }?.let(::app)
         apps = all.filter { it.first in picked && (mode != Profile.E_READER || it.first != readerPkg) }.map(::app)
         if (mode == Profile.KIOSK && apps.size == 1 && homePressed) open(apps[0].pkg)
@@ -204,17 +201,6 @@ private fun android.graphics.drawable.Drawable.toBitmap(px: Int): ImageBitmap {
     setBounds(0, 0, px, px); draw(Canvas(b))
     return b.asImageBitmap()
 }
-
-private fun prefs(ctx: Context) = ctx.getSharedPreferences("home_apps", Context.MODE_PRIVATE)
-fun homeApps(ctx: Context, p: Profile): Set<String> = prefs(ctx).getStringSet(p.name, emptySet())!!
-fun setHomeApps(ctx: Context, p: Profile, pkgs: Set<String>) = prefs(ctx).edit().putStringSet(p.name, pkgs).apply()
-
-/** The chosen reading app, else the first known reader installed, else null; never some other app. */
-fun readingApp(ctx: Context, all: List<Pair<String, String>> = launcherApps(ctx)): String? {
-    val installed = all.map { it.first }.toSet()
-    return prefs(ctx).getString("reader", null)?.takeIf { it in installed } ?: READERS.firstOrNull { it in installed }
-}
-fun setReadingApp(ctx: Context, pkg: String) = prefs(ctx).edit().putString("reader", pkg).apply()
 
 /** (package, label) of every app with a launcher icon except PhoneWarden, sorted by label. */
 fun launcherApps(ctx: Context): List<Pair<String, String>> {

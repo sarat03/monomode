@@ -163,3 +163,19 @@ fun otherApps(sh: Shell, listed: Set<String>, self: String): List<String> =
 
 // shortcut: by name; overlays only recolour or reshape the system, they are not apps. Read the apk flag if one slips through.
 private fun isOverlay(pkg: String) = "overlay" in pkg.lowercase() || pkg.startsWith("com.android.theme.")
+
+/** One phone's debloat: what can go, removing in checked batches, and the restore record in [record]. */
+class Debloat(val record: File) {
+    /** [plan] of the curated list (any risk; the owner decides), the built-in apps, and every other app but [self]. */
+    data class Scan(val plan: Plan, val system: Set<String>, val others: List<String>)
+
+    fun scan(sh: Shell, entries: List<Entry>, self: String) =
+        Scan(plan(sh, entries, maxRisk = Risk.RISKY), sh.pkgs("-s"), otherApps(sh, entries.map { it.pkg }.toSet(), self))
+
+    /** What is uninstalled or disabled now, and how. */
+    val removed: Map<String, Method> get() = recorded(record)
+
+    fun remove(sh: Shell, pkgs: List<String>, method: Method) { apply(sh, Plan(todo = pkgs), record, dryRun = false, method = method) }
+
+    fun restore(sh: Shell, only: Set<String>) = restore(sh, record, only)
+}

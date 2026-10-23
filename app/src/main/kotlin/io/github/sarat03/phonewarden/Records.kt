@@ -4,12 +4,24 @@ import android.content.ContentValues
 import android.content.Context
 import android.provider.MediaStore
 import java.io.File
+import phonewarden.engine.Debloat
+import phonewarden.engine.Modes
 
 /** Restore records live in app storage; a copy goes to Downloads so it survives uninstalling the app. */
 object Records {
     fun debloat(ctx: Context) = File(ctx.filesDir, "debloat-record.txt")
-    /** Previous settings while a mode is on; kept inside the app, deleted when the mode is turned off. */
-    fun mode(ctx: Context, p: phonewarden.engine.Profile) = File(ctx.filesDir, "mode-${p.name}.txt")
+    fun debloater(ctx: Context) = Debloat(debloat(ctx))
+
+    /** Mode records live in app storage next to the debloat record; choices in the SharedPreferences files earlier versions used. */
+    fun modes(ctx: Context) = Modes(ctx.filesDir, object : Modes.Store {
+        // "off.KIOSK" -> mode_options/KIOSK, "apps.KIOSK" -> home_apps/KIOSK, "reader" -> home_apps/reader
+        private fun prefs(key: String) = ctx.getSharedPreferences(if (key.startsWith("off.")) "mode_options" else "home_apps", Context.MODE_PRIVATE)
+        private fun name(key: String) = key.substringAfter(".")
+        override fun strings(key: String): Set<String> = prefs(key).getStringSet(name(key), emptySet())!!
+        override fun putStrings(key: String, value: Set<String>) = prefs(key).edit().putStringSet(name(key), value).apply()
+        override fun string(key: String) = prefs(key).getString(name(key), null)
+        override fun putString(key: String, value: String) = prefs(key).edit().putString(name(key), value).apply()
+    })
 
     /** Copies [record] to Downloads/PhoneWarden; no storage permission needed on Android 10+. Returns the display path. */
     fun copyToDownloads(ctx: Context, record: File): String {
