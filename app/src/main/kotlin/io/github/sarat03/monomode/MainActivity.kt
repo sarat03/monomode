@@ -135,6 +135,8 @@ class MainActivity : ComponentActivity() {
         var openMode by mutableStateOf<Profile?>(null)
         /** Clean up's chip: 0 apps, 1 background services, 2 removed (restore). */
         var cleanFilter by mutableStateOf(0)
+        /** An app was pinned, which switched Wireless debugging off; Retry stays offered until the next connection. shortcut: lost if Android kills the app while pinned, keep it in prefs if that shows up. */
+        var afterPin by mutableStateOf(false)
     }
 
     private val modes by lazy { Records.modes(applicationContext) }
@@ -167,6 +169,7 @@ class MainActivity : ComponentActivity() {
         if (paired && wirelessOn && session == null && busy == null) run("Connecting and checking this phone…") {
             val s = Session.open(applicationContext)
             session = s
+            afterPin = false
             results = s.check(applicationContext)
         }
     }
@@ -264,12 +267,12 @@ class MainActivity : ComponentActivity() {
         }
         if (!wirelessOn && !devOptionsOn()) Text("Developer options are hidden. In About phone, tap Build number 7 times.",
             Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        // Retry looks again for Wireless debugging, then connects and checks; only needed while it is off or after a failure,
-        // otherwise the app connects by itself
-        if (!wirelessOn || message != null) OutlinedButton({
+        // Retry looks again for Wireless debugging, then connects and checks; only after an error or a pin session ended it:
+        // otherwise turning it on and coming back connects by itself
+        if (message != null || afterPin) OutlinedButton({
             wirelessOn = Session.isWirelessDebuggingOn(applicationContext)
             if (!wirelessOn) toast = "Wireless debugging is still off"
-            else run("Connecting and checking this phone…") { val s = Session.open(applicationContext); session = s; results = s.check(applicationContext) }
+            else run("Connecting and checking this phone…") { val s = Session.open(applicationContext); session = s; afterPin = false; results = s.check(applicationContext) }
         }, Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled = busy == null) { Text("Retry") }
         activeMode?.let { HomeRowStatic("${it.label} is on", "Connect to change it or turn it off.") }
     }
@@ -792,6 +795,7 @@ class MainActivity : ComponentActivity() {
                             apps = null
                             run("Pinning $label and switching off Wireless debugging…") {
                                 pin(s.shell, component)
+                                afterPin = true
                                 val off = s.finish(applicationContext)
                                 session = null; results = null; cleanup = null
                                 wirelessOn = Session.isWirelessDebuggingOn(applicationContext)
