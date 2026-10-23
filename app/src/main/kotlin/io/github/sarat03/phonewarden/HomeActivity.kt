@@ -20,6 +20,8 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -102,7 +104,7 @@ class HomeActivity : ComponentActivity() {
         val picked = mode?.let { homeApps(this, it) }.orEmpty()
         val pm = packageManager
         val all = launcherApps(this)
-        fun app(p: Pair<String, String>) = App(p.first, p.second, pm.getApplicationIcon(p.first).toBitmap())
+        fun app(p: Pair<String, String>) = App(p.first, p.second, pm.getApplicationIcon(p.first).toBitmap((120 * resources.displayMetrics.density).toInt()))
         val readerPkg = readingApp(this, all)
         reader = all.firstOrNull { it.first == readerPkg }?.let(::app)
         apps = all.filter { it.first in picked && (mode != Profile.E_READER || it.first != readerPkg) }.map(::app)
@@ -169,15 +171,22 @@ class HomeActivity : ComponentActivity() {
                 Text("${battery()}%", Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium)
             }
             Text(DateFormat.getDateInstance(DateFormat.FULL).format(now), Modifier.padding(horizontal = 8.dp), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium)
-            if (apps.isEmpty()) Text("No apps chosen. Hold the clock to open PhoneWarden and choose them under Kiosk mode.", Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurface)
-            LazyVerticalGrid(GridCells.Adaptive(icon + 32.dp), Modifier.padding(top = 32.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            if (apps.isEmpty()) Text("No apps chosen. Open PhoneWarden from the bottom of the screen and choose them under Kiosk mode.", Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurface)
+            LazyVerticalGrid(GridCells.Adaptive(icon + 32.dp), Modifier.weight(1f).padding(top = 32.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                 items(apps, key = { it.pkg }) { a ->
                     Column(Modifier.clickable { open(a.pkg) }.padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Image(a.icon, a.label, Modifier.size(icon))
+                        Image(a.icon, a.label, Modifier.size(icon).clip(RoundedCornerShape(22)))
                         Text(a.label, Modifier.padding(top = 6.dp), color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
+            // visible but needs a hold, so a guest does not leave kiosk by accident
+            Text(
+                "Hold for PhoneWarden",
+                Modifier.align(Alignment.CenterHorizontally).combinedClickable(onClick = {}, onLongClick = ::openPhoneWarden).padding(12.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelMedium,
+            )
         }
     }
 }
@@ -189,9 +198,10 @@ val Profile.label get() = name.lowercase().replace('_', '-').replaceFirstChar { 
 fun AppTheme(content: @Composable () -> Unit) =
     MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(), content = content)
 
-private fun android.graphics.drawable.Drawable.toBitmap(): ImageBitmap {
-    val b = Bitmap.createBitmap(intrinsicWidth.coerceAtLeast(1), intrinsicHeight.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
-    setBounds(0, 0, b.width, b.height); draw(Canvas(b))
+/** Draws at [px], the largest size shown, so a single big kiosk icon stays sharp instead of stretching the small built-in bitmap. */
+private fun android.graphics.drawable.Drawable.toBitmap(px: Int): ImageBitmap {
+    val b = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
+    setBounds(0, 0, px, px); draw(Canvas(b))
     return b.asImageBitmap()
 }
 
