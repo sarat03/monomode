@@ -352,14 +352,16 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun ModesTab(s: Session) {
         val on = activeMode
-        Text("A mode changes a few settings for one job. Turning it off puts your own settings back exactly as they were.")
-        ModeCard("Kiosk", "Screen stays on while charging, notifications muted (alarms still ring), and one app pinned to the screen. Use Clean up too to remove distractions.", Profile.KIOSK, s, on)
-        ModeCard("E-reader", "Grayscale screen, no animations, notifications muted, battery saver on. For reading, we recommend KOReader (free, on F-Droid).", Profile.E_READER, s, on)
+        Text("A mode changes a few settings for one job; untick any you want left alone. Turning it off puts your own settings back exactly as they were.")
+        ModeCard("Kiosk", "One app pinned to the screen. Muting still lets alarms ring. Use Clean up too to remove distractions.", Profile.KIOSK, s, on)
+        ModeCard("E-reader", "For reading, we recommend KOReader (free, on F-Droid).", Profile.E_READER, s, on)
         if (on == Profile.KIOSK) PinPicker(s)
     }
 
     @Composable
     private fun ModeCard(name: String, what: String, profile: Profile, s: Session, on: Profile?) = Card {
+        val prefs = getSharedPreferences("mode_options", MODE_PRIVATE)
+        val off = remember { mutableStateListOf(*prefs.getStringSet(profile.name, emptySet())!!.toTypedArray()) }
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(name, style = MaterialTheme.typography.titleMedium)
@@ -369,7 +371,7 @@ class MainActivity : ComponentActivity() {
             Switch(on == profile, { turnOn ->
                 val record = Records.mode(applicationContext, profile)
                 if (turnOn) run("Turning on $name mode…") {
-                    applyProfile(s.shell, profile, record)
+                    applyProfile(s.shell, profile, record, off.toSet())
                     activeMode = profile
                     message = "$name mode is on."
                 } else run("Turning off $name mode…") {
@@ -379,6 +381,14 @@ class MainActivity : ComponentActivity() {
                     message = "$name mode is off. Your settings are back as they were."
                 }
             }, enabled = busy == null && (on == null || on == profile))
+        }
+        // options can change only while the mode is off: the record holds what was applied
+        for (option in profile.options.keys) Row(Modifier.padding(horizontal = 12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(option !in off, { keep ->
+                if (keep) off -= option else off += option
+                prefs.edit().putStringSet(profile.name, off.toSet()).apply()
+            }, enabled = on == null)
+            Text(option)
         }
     }
 

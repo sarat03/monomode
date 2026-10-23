@@ -48,6 +48,16 @@ class ProfileTest {
         assertEquals(start, sh.values) // release gate; unset ones deleted again
     }
 
+    @Test fun `options switched off are left alone`() {
+        val sh = FakeSettings(start); val r = rec()
+        applyProfile(sh, Profile.E_READER, r, off = setOf("No animations", "Battery saver"))
+        assertEquals("1.0", sh.values["global window_animation_scale"])
+        assertEquals("0", sh.values["global low_power"])
+        assertEquals("1", sh.values["secure accessibility_display_daltonizer_enabled"])
+        restoreProfile(sh, r)
+        assertEquals(start, sh.values)
+    }
+
     @Test fun `kiosk keeps the screen on while charging and enables pinning`() {
         val sh = FakeSettings(start); val r = rec()
         applyProfile(sh, Profile.KIOSK, r)
