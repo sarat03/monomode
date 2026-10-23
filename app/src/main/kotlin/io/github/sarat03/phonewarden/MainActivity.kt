@@ -120,6 +120,9 @@ class MainActivity : ComponentActivity() {
         wirelessOn = Session.isWirelessDebuggingOn(this)
         activeMode = modes.active
         restoreItems = debloat.removed
+        // Android switched Wireless debugging off while we were away (lock, Wi-Fi change): that session is dead
+        // closing sends TLS close_notify, which is network: never on the main thread
+        if (!wirelessOn && busy == null) session?.let { s -> thread { runCatching { s.close() } }; session = null; results = null; cleanup = null }
         // paired and Wireless debugging on: connect and check straight away, no Start button
         if (paired && wirelessOn && session == null && busy == null) run("Connecting and checking this phone…") {
             val s = Session.open(applicationContext)
@@ -169,7 +172,7 @@ class MainActivity : ComponentActivity() {
     private fun Screen() {
         val snack = remember { SnackbarHostState() }
         LaunchedEffect(toast) { toast?.let { snack.showSnackbar(it); toast = null } }
-        Scaffold(snackbarHost = { SnackbarHost(snack) }, contentWindowInsets = WindowInsets(0)) { pad -> Column(Modifier.padding(pad).safeDrawingPadding().padding(16.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Scaffold(snackbarHost = { SnackbarHost(snack, Modifier.padding(bottom = if (session != null) 88.dp else 0.dp)) } /* above the bottom bar */, contentWindowInsets = WindowInsets(0)) { pad -> Column(Modifier.padding(pad).safeDrawingPadding().padding(16.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             busy?.let { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(it, style = MaterialTheme.typography.bodyMedium) } }
             message?.let { Note(it) }
             val s = session
