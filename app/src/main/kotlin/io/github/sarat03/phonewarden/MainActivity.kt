@@ -31,6 +31,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -88,7 +89,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { MaterialTheme { Surface(Modifier.fillMaxSize()) { Screen() } } }
+        setContent { AppTheme { Surface(Modifier.fillMaxSize()) { Screen() } } }
     }
 
     override fun onResume() {
@@ -409,8 +410,19 @@ class MainActivity : ComponentActivity() {
     private fun HomePicker(profile: Profile) {
         var open by remember { mutableStateOf(false) }
         val picked = remember { mutableStateListOf(*homeApps(this, profile).toTypedArray()) }
-        TextButton({ open = !open }, Modifier.padding(horizontal = 12.dp)) { Text("Apps on the home screen (${picked.size}) ${if (open) "▲" else "▼"}") }
-        if (open) for ((pkg, label) in remember { launcherApps(this) }) Row(Modifier.padding(horizontal = 12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        val all = remember { launcherApps(this) }
+        if (profile == Profile.E_READER) {
+            var reader by remember { mutableStateOf(readingApp(this, all)) }
+            var choose by remember { mutableStateOf(false) }
+            val name = all.firstOrNull { it.first == reader }?.second ?: "none found"
+            TextButton({ choose = !choose }, Modifier.padding(horizontal = 12.dp)) { Text("Reading app for Continue reading: $name ${if (choose) "▲" else "▼"}") }
+            if (choose) for ((pkg, label) in all) Row(Modifier.padding(horizontal = 12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(pkg == reader, { reader = pkg; setReadingApp(this@MainActivity, pkg); choose = false })
+                Text(label)
+            }
+        }
+        TextButton({ open = !open }, Modifier.padding(horizontal = 12.dp)) { Text("${if (profile == Profile.E_READER) "Other apps" else "Apps"} on the home screen (${picked.size}) ${if (open) "▲" else "▼"}") }
+        if (open) for ((pkg, label) in all) Row(Modifier.padding(horizontal = 12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Checkbox(pkg in picked, { if (it) picked += pkg else picked -= pkg; setHomeApps(this@MainActivity, profile, picked.toSet()) })
             Text(label)
         }
