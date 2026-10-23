@@ -125,6 +125,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Appearance.load(this)
         openPage(intent)
         setContent { AppTheme { Surface(Modifier.fillMaxSize()) { Screen() } } }
     }
@@ -283,7 +284,14 @@ class MainActivity : ComponentActivity() {
             if (paired) OutlinedButton({ Pairing.forget(applicationContext); paired = false; session?.let { s -> thread { runCatching { s.close() } } }; session = null; tab = Page.HOME; toast = "Pairing forgotten. Pair again to continue." }) { Text("Forget and pair again") }
         }
         SettingRow("Restore lists", "Each clean up saves a copy of its restore list in Downloads/PhoneWarden, so apps can be brought back even after reinstalling PhoneWarden.")
-        SettingRow("Appearance", "Follows the phone's light or dark setting.")
+        SettingRow("Appearance", "Colours for PhoneWarden and its mode home screens.") {
+            Column {
+                for ((key, name) in Appearance.options) Row(
+                    Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(Appearance.mode == key, role = Role.RadioButton) { Appearance.set(applicationContext, key) },
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) { RadioButton(Appearance.mode == key, null); Text(name) }
+            }
+        }
         SettingRow("About", "PhoneWarden ${packageManager.getPackageInfo(packageName, 0).versionName}. Open source, MIT licence.") {
             OutlinedButton({ startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/sarat03/phonewarden"))) }) { Text("Source code") }
         }
@@ -552,7 +560,6 @@ class MainActivity : ComponentActivity() {
             Profile.KIOSK -> ModeCard("Kiosk", "A few apps on a simple home screen, or one app pinned. Muting still lets alarms ring.", Profile.KIOSK, s, on)
             Profile.E_READER -> ModeCard("E-reader", "A paper-like home screen that opens your reading app. KOReader and ReadEra are good free readers.", Profile.E_READER, s, on)
         }
-        if (on == Profile.KIOSK && shown == Profile.KIOSK) PinPicker(s)
     }
 
     @Composable
@@ -586,6 +593,7 @@ class MainActivity : ComponentActivity() {
         }
         if (on == profile) Text("Turn the mode off to change these.", Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.bodyMedium)
         if ("Own home screen" !in off) HomePicker(profile)
+        if (profile == Profile.KIOSK) PinPicker(s, on == profile)
     }
 
     /** Which apps the mode's home screen shows; editable any time, the home screen rereads it on return. */
@@ -621,28 +629,43 @@ class MainActivity : ComponentActivity() {
 
     /** Pinning hides PhoneWarden, so it is the last step: pin, then switch Wireless debugging off. */
     @Composable
-    private fun PinPicker(s: Session) {
+    private fun PinPicker(s: Session, kioskOn: Boolean) {
         var apps by remember { mutableStateOf<List<Pair<String, String>>?>(null) }
-        Text("Pin an app", style = MaterialTheme.typography.titleMedium)
-        Text("The app fills the screen and stays there. To unpin later, hold Back and Overview together (or swipe up and hold, with gesture navigation).")
-        val list = apps
-        if (list == null) OutlinedButton({
-            run("Listing apps…") {
-                // pin() starts a component; the launch intent names the app's own start screen
-                apps = launcherApps(applicationContext).mapNotNull { (pkg, label) ->
-                    packageManager.getLaunchIntentForPackage(pkg)?.component?.flattenToShortString()?.let { it to label }
+        Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp)) {
+            // always shown, so it is clear pinning exists; it needs Kiosk on, which enables screen pinning
+            ListRow("Pin an app", if (kioskOn) "One app fills the screen until you unpin it" else "Turn Kiosk on first, then choose the app") {
+                if (!kioskOn) toast = "Turn on Kiosk mode first"
+                else run("Listing apps…") {
+                    // pin() starts a component; the launch intent names the app's own start screen
+                    apps = launcherApps(applicationContext).mapNotNull { (pkg, label) ->
+                        packageManager.getLaunchIntentForPackage(pkg)?.component?.flattenToShortString()?.let { it to label }
+                    }
                 }
             }
-        }, enabled = busy == null) { Text("Choose an app to pin") }
-        else ListDialog("Pin an app", "The app fills the screen and Wireless debugging switches off.", { apps = null }, search = true) { q -> items(list.filter { it.matches(q) }) { (component, label) -> OutlinedButton({
-            run("Pinning $label and switching off Wireless debugging…") {
-                pin(s.shell, component)
-                val off = s.finish(applicationContext)
-                session = null; results = null; cleanup = null
-                wirelessOn = Session.isWirelessDebuggingOn(applicationContext)
-                if (off) toast = "$label is pinned. Wireless debugging is off." else message = "$label is pinned. Wireless debugging may still be on: turn it off in Developer options."
+        }
+        apps?.let { list ->
+            ListDialog(
+                "Pin an app",
+                "The app fills the screen and Wireless debugging switches off. To unpin, hold Back and Overview together (or swipe up and hold, with gesture navigation).",
+                { apps = null }, search = true,
+            ) { q ->
+                items(list.filter { it.matches(q) }) { (component, label) ->
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = 52.dp).clickable(enabled = busy == null) {
+                            apps = null
+                            run("Pinning $label and switching off Wireless debugging…") {
+                                pin(s.shell, component)
+                                val off = s.finish(applicationContext)
+                                session = null; results = null; cleanup = null
+                                wirelessOn = Session.isWirelessDebuggingOn(applicationContext)
+                                if (off) toast = "$label is pinned. Wireless debugging is off." else message = "$label is pinned. Wireless debugging may still be on: turn it off in Developer options."
+                            }
+                        },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) { AppIcon(component.substringBefore("/")); Text(label, Modifier.padding(start = 12.dp)) }
+                }
             }
-        }, Modifier.fillMaxWidth(), enabled = busy == null) { Text(label) } } }
+        }
     }
 
     @Composable

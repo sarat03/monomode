@@ -77,6 +77,7 @@ class HomeActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Appearance.load(this)
         // a home screen ignores Back; finishing would reveal the phone's usual launcher underneath
         onBackPressedDispatcher.addCallback(this) {}
         setContent {
@@ -125,7 +126,7 @@ class HomeActivity : ComponentActivity() {
     /** Kindle/Kobo style: paper white, black serif text, no colour or motion, so it suits the grayscale screen. */
     @Composable
     private fun Reader() {
-        val dark = isSystemInDarkTheme()
+        val dark = isDark()
         val ink = if (dark) Color.White else Color.Black
         val paper = if (dark) Color.Black else Color.White
         val serif = FontFamily.Serif
@@ -204,10 +205,22 @@ class HomeActivity : ComponentActivity() {
 
 val Profile.label get() = name.lowercase().replace('_', '-').replaceFirstChar { it.uppercase() }
 
-/** Material theme that follows the phone's dark/light setting. */
+/** Settings > Appearance; "system" follows the phone's light or dark setting. */
+object Appearance {
+    val options = listOf("system" to "Follow the phone", "light" to "Light", "dark" to "Dark")
+    var mode by mutableStateOf("system")
+    private fun prefs(ctx: Context) = ctx.getSharedPreferences("appearance", Context.MODE_PRIVATE)
+    fun load(ctx: Context) { mode = prefs(ctx).getString("mode", "system")!! }
+    fun set(ctx: Context, m: String) { mode = m; prefs(ctx).edit().putString("mode", m).apply() }
+}
+
+@Composable
+fun isDark() = when (Appearance.mode) { "light" -> false; "dark" -> true; else -> isSystemInDarkTheme() }
+
+/** Material theme in the chosen appearance. */
 @Composable
 fun AppTheme(content: @Composable () -> Unit) =
-    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(), content = content)
+    MaterialTheme(colorScheme = if (isDark()) darkColorScheme() else lightColorScheme(), content = content)
 
 /** Draws at [px], the largest size shown, so a single big kiosk icon stays sharp instead of stretching the small built-in bitmap. */
 internal fun android.graphics.drawable.Drawable.toBitmap(px: Int): ImageBitmap {
@@ -226,6 +239,6 @@ fun launcherApps(ctx: Context): List<Pair<String, String>> {
 
 /** Status colours from the first design: green for safe, amber for things to look at, red for errors. */
 class Tone(val bg: Color, val fg: Color)
-@Composable fun safeTone() = if (isSystemInDarkTheme()) Tone(Color(0xFF27500A), Color(0xFFC0DD97)) else Tone(Color(0xFFEAF3DE), Color(0xFF27500A))
-@Composable fun warnTone() = if (isSystemInDarkTheme()) Tone(Color(0xFF633806), Color(0xFFFAC775)) else Tone(Color(0xFFFAEEDA), Color(0xFF633806))
-@Composable fun errorTone() = if (isSystemInDarkTheme()) Tone(Color(0xFF791F1F), Color(0xFFF7C1C1)) else Tone(Color(0xFFFCEBEB), Color(0xFF791F1F))
+@Composable fun safeTone() = if (isDark()) Tone(Color(0xFF27500A), Color(0xFFC0DD97)) else Tone(Color(0xFFEAF3DE), Color(0xFF27500A))
+@Composable fun warnTone() = if (isDark()) Tone(Color(0xFF633806), Color(0xFFFAC775)) else Tone(Color(0xFFFAEEDA), Color(0xFF633806))
+@Composable fun errorTone() = if (isDark()) Tone(Color(0xFF791F1F), Color(0xFFF7C1C1)) else Tone(Color(0xFFFCEBEB), Color(0xFF791F1F))
