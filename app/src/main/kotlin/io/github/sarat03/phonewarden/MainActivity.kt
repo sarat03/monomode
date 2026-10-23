@@ -41,6 +41,7 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
@@ -361,7 +362,8 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun CleanupTab(s: Session) {
-        Text("Lists the apps on this phone you can uninstall or disable. Restore below brings back any of them.")
+        Text("Clean up", style = MaterialTheme.typography.headlineSmall)
+        Text("Uninstall or disable apps you don't use. Restore below brings back any of them.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         val c = cleanup
         if (c == null) {
             Button({
@@ -390,8 +392,8 @@ class MainActivity : ComponentActivity() {
             if (background.isNotEmpty()) {
                 var open by remember { mutableStateOf(false) }
                 ListRow("Background services", "${background.size} without an icon · ${background.count { it.first in selected }} chosen") { open = true }
-                if (open) ListDialog("Background services", "These run without an icon. Many are needed by the phone; leave them unless you know what one does.", { open = false }) {
-                    items(background, key = { it.first }) { (pkg, name) -> PickRowShown(pkg, name) }
+                if (open) ListDialog("Background services", "These run without an icon. Many are needed by the phone; leave them unless you know what one does.", { open = false }, search = true) { q ->
+                    items(background.filter { it.matches(q) }, key = { it.first }) { (pkg, name) -> PickRowShown(pkg, name) }
                 }
             }
             // Uninstall only for built-in apps: their apk stays on the phone so Restore works; a Play Store app's is deleted
@@ -540,20 +542,20 @@ class MainActivity : ComponentActivity() {
                 var reader by remember { mutableStateOf(modes.reader(all.map { it.first })) }
                 var choose by remember { mutableStateOf(false) }
                 ListRow("Reading app", all.firstOrNull { it.first == reader }?.second ?: "None found: choose one") { choose = true }
-                if (choose) ListDialog("Reading app", "Opens from Continue reading.", { choose = false }) {
-                    items(all, key = { it.first }) { (pkg, label) ->
+                if (choose) ListDialog("Reading app", "Opens from Continue reading.", { choose = false }, search = true) { q ->
+                    items(all.filter { it.matches(q) }, key = { it.first }) { (pkg, label) ->
                         Row(Modifier.fillMaxWidth().clickable { reader = pkg; modes.setReader(pkg); choose = false }, verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(pkg == reader, null); Text(label, Modifier.padding(start = 8.dp))
+                            RadioButton(pkg == reader, null); AppIcon(pkg); Text(label, Modifier.padding(start = 10.dp))
                         }
                     }
                 }
             }
             val names = all.filter { it.first in picked }.joinToString { it.second }
             ListRow(if (profile == Profile.E_READER) "Other apps" else "Apps on the home screen", names.ifEmpty { "None chosen" }) { open = true }
-            if (open) ListDialog(if (profile == Profile.E_READER) "Other apps" else "Apps on the home screen", null, { open = false }) {
-                items(all, key = { it.first }) { (pkg, label) ->
+            if (open) ListDialog(if (profile == Profile.E_READER) "Other apps" else "Apps on the home screen", null, { open = false }, search = true) { q ->
+                items(all.filter { it.matches(q) }, key = { it.first }) { (pkg, label) ->
                     Row(Modifier.fillMaxWidth().clickable { if (pkg in picked) picked -= pkg else picked += pkg; modes.setApps(profile, picked.toSet()) }, verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(pkg in picked, null); Text(label, Modifier.padding(start = 8.dp))
+                        Checkbox(pkg in picked, null); AppIcon(pkg); Text(label, Modifier.padding(start = 10.dp))
                     }
                 }
             }
@@ -575,7 +577,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }, enabled = busy == null) { Text("Choose an app to pin") }
-        else ListDialog("Pin an app", "The app fills the screen and Wireless debugging switches off.", { apps = null }) { items(list) { (component, label) -> OutlinedButton({
+        else ListDialog("Pin an app", "The app fills the screen and Wireless debugging switches off.", { apps = null }, search = true) { q -> items(list.filter { it.matches(q) }) { (component, label) -> OutlinedButton({
             run("Pinning $label and switching off Wireless debugging…") {
                 pin(s.shell, component)
                 val off = s.finish(applicationContext)
@@ -616,15 +618,30 @@ class MainActivity : ComponentActivity() {
 
     /** Android's list pop-up: a title, a scrolling list, and Done. */
     @Composable
-    private fun ListDialog(title: String, note: String? = null, onClose: () -> Unit, items: LazyListScope.() -> Unit) = AlertDialog(
-        onDismissRequest = onClose,
-        confirmButton = { TextButton(onClose) { Text("Done") } },
-        title = { Text(title) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                LazyColumn(Modifier.heightIn(max = 460.dp), verticalArrangement = Arrangement.spacedBy(4.dp), content = items)
-            }
-        },
-    )
+    private fun ListDialog(title: String, note: String? = null, onClose: () -> Unit, search: Boolean = false, items: LazyListScope.(query: String) -> Unit) {
+        var q by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = onClose,
+            confirmButton = { TextButton(onClose) { Text("Done") } },
+            title = { Text(title) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    if (search) OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), placeholder = { Text("Search") }, singleLine = true)
+                    LazyColumn(Modifier.heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { items(q) }
+                }
+            },
+        )
+    }
+
+    private fun Pair<String, String>.matches(q: String) = q.isBlank() || second.contains(q, true) || first.contains(q, true)
+
+    /** The app's own icon, small, for pick lists; cached like labels. */
+    private val smallIcons = HashMap<String, androidx.compose.ui.graphics.ImageBitmap>()
+    @Composable
+    private fun AppIcon(pkg: String) {
+        val px = (32 * resources.displayMetrics.density).toInt()
+        val icon = smallIcons.getOrPut(pkg) { runCatching { packageManager.getApplicationIcon(pkg) }.getOrElse { packageManager.defaultActivityIcon }.toBitmap(px) }
+        androidx.compose.foundation.Image(icon, null, Modifier.size(32.dp))
+    }
 }

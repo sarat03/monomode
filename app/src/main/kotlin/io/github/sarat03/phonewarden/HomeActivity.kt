@@ -206,7 +206,7 @@ fun AppTheme(content: @Composable () -> Unit) =
     MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme(), content = content)
 
 /** Draws at [px], the largest size shown, so a single big kiosk icon stays sharp instead of stretching the small built-in bitmap. */
-private fun android.graphics.drawable.Drawable.toBitmap(px: Int): ImageBitmap {
+internal fun android.graphics.drawable.Drawable.toBitmap(px: Int): ImageBitmap {
     val b = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
     setBounds(0, 0, px, px); draw(Canvas(b))
     return b.asImageBitmap()
