@@ -141,3 +141,10 @@ fun drift(sh: Shell, record: File): List<String> {
     val disabled = sh.pkgs("-d")
     return readRecord(record).filter { it in installed && it !in disabled }
 }
+
+/** Every enabled app not covered by a list, so the owner can pick any of them; protected apps and [self] are left out. */
+fun otherApps(sh: Shell, listed: Set<String>, self: String): List<String> =
+    sh.pkgs("-e").filter { it !in listed && it !in PROTECTED && it != self && !it.startsWith("$self.") && !isOverlay(it) }.sorted()
+
+// shortcut: by name; overlays only recolour or reshape the system, they are not apps. Read the apk flag if one slips through.
+private fun isOverlay(pkg: String) = "overlay" in pkg.lowercase() || pkg.startsWith("com.android.theme.")

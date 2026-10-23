@@ -7,7 +7,7 @@ data class AccessReport(
     val notificationAccess: List<String>,
     /** Third-party apps with their installer, when it is not the Play Store (null: sideloaded or unknown). */
     val outsidePlayStore: List<Pair<String, String?>>,
-    /** Apps built into the system image. Their special access is how Android works, so it is not reported. */
+    /** Apps built into the system image. Their access is usually how Android works, so it is shown apart. */
     val system: Set<String>,
 )
 
@@ -21,7 +21,6 @@ private fun Shell.componentPackages(key: String): List<String> {
 }
 
 fun access(sh: Shell): AccessReport {
-    // shortcut: trusts the system image; a vendor app with bad intent would be hidden too. Revisit with per-brand lists.
     val system = sh.run(listOf("pm", "list", "packages", "-s")).lines().filter { it.startsWith("package:") }.map { it.drop(8).trim() }.toSet()
     val installers = sh.run(listOf("pm", "list", "packages", "-3", "-i")).lines().mapNotNull { line ->
         if (!line.startsWith("package:")) return@mapNotNull null
@@ -30,8 +29,8 @@ fun access(sh: Shell): AccessReport {
         if (installer == PLAY_STORE) null else pkg to installer
     }
     return AccessReport(
-        sh.componentPackages("enabled_accessibility_services") - system,
-        sh.componentPackages("enabled_notification_listeners") - system,
+        sh.componentPackages("enabled_accessibility_services"),
+        sh.componentPackages("enabled_notification_listeners"),
         installers,
         system,
     )

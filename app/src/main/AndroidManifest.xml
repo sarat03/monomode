@@ -8,13 +8,9 @@
     <!-- The pairing code is typed into a notification reply. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- Names of home-screen apps for the kiosk pin picker; no broad package visibility needed. -->
-    <queries>
-        <intent>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.LAUNCHER" />
-        </intent>
-    </queries>
+    <!-- App names in Clean up and the kiosk picker. A debloater must see every app, so this is the
+         one broad permission; nothing leaves the phone (ADR 0002). -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
     <application
         android:allowBackup="false"

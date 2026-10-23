@@ -47,13 +47,21 @@ class FindingsTest {
         }
     }
 
-    @Test fun `built-in apps talking to the internet are not listed`() {
+    @Test fun `built-in apps are kept but marked system, so the screen can fold them away`() {
         val net = NetworkReport(emptyList(), emptyList(), listOf(
             sock(4000, 10010, "com.google.android.gsf,com.google.android.gms", "1.2.3.4:5228", "01"),
             sock(4001, 1000, "system(uid 1000)", "1.2.3.4:443", "01"),
             sock(4002, 10077, "com.chat.app", "8.8.8.8:443", "01"),
         ), false)
         val access = AccessReport(emptyList(), emptyList(), emptyList(), setOf("com.google.android.gsf", "com.google.android.gms"))
-        assertEquals(listOf("com.chat.app is talking to the internet"), findings(net, access, nothing, 0).map { it.title })
+        val f = findings(net, access.copy(notificationAccess = listOf("com.google.android.gms")), nothing, 0)
+        assertEquals(listOf("com.chat.app is talking to the internet"), f.filterNot { it.system }.map { it.title })
+        assertEquals(setOf("com.google.android.gms can read all your notifications", "com.google.android.gsf,com.google.android.gms is talking to the internet", "system(uid 1000) is talking to the internet"), f.filter { it.system }.map { it.title }.toSet())
+    }
+
+    @Test fun `an app group sharing one user id is shortened`() {
+        val many = (1..40).joinToString(",") { "com.vendor.part$it" }
+        val net = NetworkReport(emptyList(), emptyList(), listOf(sock(4000, 1000, many, "1.2.3.4:443", "01")), false)
+        assertEquals("com.vendor.part1 and 39 more apps is talking to the internet", findings(net, noAccess, nothing, 0).first().title)
     }
 }

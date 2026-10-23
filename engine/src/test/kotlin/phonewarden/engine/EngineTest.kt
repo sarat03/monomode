@@ -161,4 +161,12 @@ class EngineTest {
         sh.disabled -= "com.c.d"; sh.enabled += "com.c.d" // OTA re-enabled it
         assertEquals(listOf("com.c.d"), drift(sh, r))
     }
+
+    @Test fun `other apps are the enabled ones not in the list and not protected`() {
+        val sh = Shell { args ->
+            check(args == listOf("pm", "list", "packages", "-e")) { "unexpected $args" }
+            "package:com.android.systemui\npackage:com.listed.app\npackage:com.vendor.extra\npackage:com.chat.app\npackage:io.me\npackage:android.frameworkres.overlay.Network\npackage:com.android.theme.icon.circle\n"
+        }
+        assertEquals(listOf("com.chat.app", "com.vendor.extra"), otherApps(sh, listed = setOf("com.listed.app"), self = "io.me"))
+    }
 }

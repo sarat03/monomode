@@ -17,7 +17,8 @@ android {
     }
 
     buildFeatures { compose = true }
-    sourceSets["main"].assets.srcDir("../examples") // debloat lists bundled in the app, never downloaded (ADR 0002)
+    // debloat lists bundled in the app, never downloaded (ADR 0002)
+    sourceSets["main"].assets.srcDir("../examples")
 }
 
 kotlin { jvmToolchain(21) }

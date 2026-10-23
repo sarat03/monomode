@@ -49,6 +49,7 @@ import phonewarden.engine.Risk
 import phonewarden.engine.apply
 import phonewarden.engine.applyProfile
 import phonewarden.engine.launchableApps
+import phonewarden.engine.otherApps
 import phonewarden.engine.parseList
 import phonewarden.engine.pin
 import phonewarden.engine.unpin
@@ -71,6 +72,8 @@ class MainActivity : ComponentActivity() {
         val selected = mutableStateListOf<String>()
         /** The mode that is on, mirrored from its record file so the screen updates. */
         var activeMode by mutableStateOf<Profile?>(null)
+        var others by mutableStateOf<List<Pair<String, String>>>(emptyList())
+        var launcherPkgs by mutableStateOf<Set<String>>(emptySet())
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -179,38 +182,63 @@ class MainActivity : ComponentActivity() {
     private fun CheckTab(s: Session) {
         Text("Looks at what can reach this phone and what apps have special access. Read-only: it changes nothing.")
         Button({ run("Checking…") { results = s.check(applicationContext) } }, enabled = busy == null) { Text(if (results == null) "Check this phone" else "Check again") }
-        results?.sortedBy { it.level }?.forEach { f ->
-            Card(colors = if (f.level == Level.LOOK) CardDefaults.cardColors(MaterialTheme.colorScheme.tertiaryContainer) else CardDefaults.cardColors()) {
-                Column(Modifier.padding(12.dp)) {
-                    Text(f.title, style = MaterialTheme.typography.titleSmall)
-                    Text(f.detail, style = MaterialTheme.typography.bodyMedium)
-                }
+        val (system, own) = (results ?: return).sortedBy { it.level }.partition { it.system }
+        own.forEach { FindingCard(it) }
+        if (system.isNotEmpty()) {
+            var open by remember { mutableStateOf(false) }
+            OutlinedButton({ open = !open }, Modifier.fillMaxWidth()) {
+                Text("System apps (${system.size})  ${if (open) "▲" else "▼"}")
+            }
+            if (open) {
+                Text("Apps built into the phone. Their access is usually how Android works.", style = MaterialTheme.typography.bodySmall)
+                system.forEach { FindingCard(it) }
             }
         }
     }
 
     @Composable
+    private fun FindingCard(f: Finding) =
+        Card(colors = if (f.level == Level.LOOK && !f.system) CardDefaults.cardColors(MaterialTheme.colorScheme.tertiaryContainer) else CardDefaults.cardColors()) {
+            Column(Modifier.padding(12.dp)) {
+                Text(f.title, style = MaterialTheme.typography.titleSmall)
+                Text(f.detail, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+
+    @Composable
     private fun CleanupTab(s: Session) {
-        Text("Turns off apps the phone maker added that you may not need. Nothing is deleted; Restore brings everything back.")
+        Text("Lists every app on this phone that you can turn off. Nothing is deleted; Restore brings everything back.")
         val c = cleanup
         if (c == null) {
             Button({
                 run("Reading the app list…") {
+                    // the phone's own app list, not a list per brand; generic.txt only adds notes for apps we know
                     val entries = parseList(assets.open("generic.txt").bufferedReader().readText())
                     val p = plan(s.shell, entries, maxRisk = Risk.RISKY)
                     selected.clear()
                     selected += entries.filter { it.risk == Risk.SAFE && it.pkg in p.todo }.map { it.pkg } // only safe pre-selected
+                    launcherPkgs = launchableApps(s.shell).map { it.substringBefore("/") }.toSet()
+                    others = otherApps(s.shell, entries.map { it.pkg }.toSet(), packageName)
+                        .map { it to label(it) }.sortedBy { it.second.lowercase() }
                     cleanup = entries to p
                 }
             }, enabled = busy == null) { Text("Show what can be turned off") }
         } else {
             val (entries, p) = c
-            if (p.todo.isEmpty()) Text("Nothing from the list is installed and still on.")
-            for (e in entries.filter { it.pkg in p.todo }) Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(e.pkg in selected, { on -> if (on) selected += e.pkg else selected -= e.pkg })
-                Text(e.pkg + if (e.risk != Risk.SAFE) "  (${e.risk.name.lowercase()}: check you do not use it)" else "")
-            }
+            Text("Only turn off apps you recognise. Android's core apps are not listed, and the check after each batch undoes anything that breaks Home, calls or the keyboard.", style = MaterialTheme.typography.bodySmall)
             if (p.already.isNotEmpty()) Text("Already off: ${p.already.size}")
+            for (e in entries.filter { it.pkg in p.todo }) PickRow(e.pkg, label(e.pkg) + if (e.risk != Risk.SAFE) "  (${e.risk.name.lowercase()}: check you do not use it)" else "")
+            val withIcon = launcherPkgs
+            for ((pkg, name) in others.filter { it.first in withIcon }) PickRow(pkg, name)
+            val background = others.filterNot { it.first in withIcon }
+            if (background.isNotEmpty()) {
+                var open by remember { mutableStateOf(false) }
+                OutlinedButton({ open = !open }, Modifier.fillMaxWidth()) { Text("Advanced: background services (${background.size})  ${if (open) "▲" else "▼"}") }
+                if (open) {
+                    Text("These have no icon and run in the background. Many are needed by the phone; leave them unless you know what one does.", style = MaterialTheme.typography.bodySmall)
+                    for ((pkg, name) in background) PickRow(pkg, name)
+                }
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button({ cleanupApply(s, Method.DISABLE) }, enabled = busy == null && selected.isNotEmpty()) { Text("Turn off ${selected.size}") }
                 OutlinedButton({ cleanupApply(s, Method.REMOVE) }, enabled = busy == null && selected.isNotEmpty()) { Text("Remove for this user") }
@@ -226,6 +254,19 @@ class MainActivity : ComponentActivity() {
             }
         }, enabled = busy == null) { Text("Restore everything") }
     }
+
+    @Composable
+    private fun PickRow(pkg: String, text: String) = Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(pkg in selected, { on -> if (on) selected += pkg else selected -= pkg })
+        Column {
+            Text(text)
+            if (text != pkg) Text(pkg, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+
+    /** App name, or the package name for apps Android does not let us see. */
+    private fun label(pkg: String) =
+        runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)
 
     private fun cleanupApply(s: Session, method: Method) = run("Working in small batches, checking the phone after each…") {
         val record = Records.debloat(applicationContext)

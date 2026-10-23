@@ -40,7 +40,7 @@ class AccessTest {
         assertEquals(listOf("com.sideloaded.app" to null, "org.fdroid.app" to "org.fdroid.fdroid"), r.outsidePlayStore)
     }
 
-    @Test fun `built-in system apps with access are part of Android, not findings`() {
+    @Test fun `access lists include built-in apps and report which are built in`() {
         val r = access(sh(
             "com.tool.reader/.Svc",
             "com.google.android.as/.Listener:com.google.android.apps.nexuslauncher/.Listener:com.chat.app/.Listener",
@@ -48,7 +48,7 @@ class AccessTest {
             system = "package:com.google.android.as\npackage:com.google.android.apps.nexuslauncher\npackage:android\n",
         ))
         assertEquals(listOf("com.tool.reader"), r.accessibility)
-        assertEquals(listOf("com.chat.app"), r.notificationAccess)
+        assertEquals(listOf("com.google.android.as", "com.google.android.apps.nexuslauncher", "com.chat.app"), r.notificationAccess)
         assertEquals(setOf("com.google.android.as", "com.google.android.apps.nexuslauncher", "android"), r.system)
     }
 }
