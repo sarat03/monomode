@@ -92,6 +92,12 @@ class MainActivity : ComponentActivity() {
         wirelessOn = Session.isWirelessDebuggingOn(this)
         activeMode = modes.active
         restoreItems = debloat.removed
+        // paired and Wireless debugging on: connect and check straight away, no Start button
+        if (paired && wirelessOn && session == null && busy == null) run("Connecting and checking this phone…") {
+            val s = Session.open(applicationContext)
+            session = s
+            results = s.check(applicationContext)
+        }
     }
 
     override fun onDestroy() {
