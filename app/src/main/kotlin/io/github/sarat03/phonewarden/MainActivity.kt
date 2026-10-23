@@ -169,7 +169,7 @@ class MainActivity : ComponentActivity() {
                 // adbd dropped us, e.g. Wireless debugging went off when Wi-Fi changed or the phone slept
                 session?.close(); session = null
                 wirelessOn = Session.isWirelessDebuggingOn(applicationContext)
-                message = "The connection to this phone was lost (Wireless debugging may have switched off). Turn it on again and tap Start."
+                message = "The connection to this phone was lost. If Wireless debugging went off, turn it on again, then tap Check this phone."
             } catch (e: Exception) { message = explain(e) } finally { busy = null }
         }
     }
