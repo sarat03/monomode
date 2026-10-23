@@ -179,7 +179,7 @@ class HomeActivity : ComponentActivity() {
                     DateFormat.getTimeInstance(DateFormat.SHORT).format(now),
                     Modifier.combinedClickable(onClick = {}, onLongClick = ::openMonoMode).padding(8.dp),
                     color = MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.displayMedium,
+                    style = MaterialTheme.typography.displayLarge,
                 )
                 Spacer(Modifier.weight(1f))
                 Text("${battery()}%", Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium)
