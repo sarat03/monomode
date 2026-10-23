@@ -14,4 +14,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "phonewarden"
-include("adb", "app")
+include("adb", "engine", "app")
