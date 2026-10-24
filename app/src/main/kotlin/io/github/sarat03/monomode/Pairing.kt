@@ -37,18 +37,18 @@ object Pairing {
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("pairing", Context.MODE_PRIVATE)
 
     /** Shows the notification with a code field. [text] explains the next step. */
-    fun prompt(ctx: Context, text: String = "In Wireless debugging, tap \"Pair device with pairing code\", then type the 6-digit code here.") {
+    fun prompt(ctx: Context, text: String = ctx.getString(R.string.pairing_prompt)) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(CHANNEL, "Pairing", NotificationManager.IMPORTANCE_HIGH))
+        nm.createNotificationChannel(NotificationChannel(CHANNEL, ctx.getString(R.string.pairing), NotificationManager.IMPORTANCE_HIGH))
         val reply = PendingIntent.getBroadcast(
             ctx, 0, Intent(ctx, PairReceiver::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE, // mutable so Android can add the typed code
         )
-        val input = RemoteInput.Builder(KEY_CODE).setLabel("6-digit pairing code").build()
-        val action = Notification.Action.Builder(null, "Enter code", reply).addRemoteInput(input).build()
+        val input = RemoteInput.Builder(KEY_CODE).setLabel(ctx.getString(R.string.s_6_digit_pairing_code)).build()
+        val action = Notification.Action.Builder(null, ctx.getString(R.string.enter_code), reply).addRemoteInput(input).build()
         nm.notify(ID, Notification.Builder(ctx, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_lock_lock)
-            .setContentTitle("Pair MonoMode")
+            .setContentTitle(ctx.getString(R.string.pair_monomode))
             .setContentText(text)
             .setStyle(Notification.BigTextStyle().bigText(text))
             .addAction(action)
@@ -59,14 +59,14 @@ object Pairing {
     private fun done(ctx: Context, text: String) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         nm.notify(ID, Notification.Builder(ctx, CHANNEL).setSmallIcon(android.R.drawable.ic_lock_lock)
-            .setContentTitle("MonoMode is paired").setContentText(text).setAutoCancel(true).build())
+            .setContentTitle(ctx.getString(R.string.monomode_is_paired)).setContentText(text).setAutoCancel(true).build())
     }
 
     /** Pairs with this phone's own adbd. Throws with a message fit for the notification. */
     fun pair(ctx: Context, code: String) {
-        require(CODE.matches(code)) { "The code is 6 digits. Try again." }
+        require(CODE.matches(code)) { ctx.getString(R.string.the_code_is_6_digits) }
         val ports = Mdns.ports(ctx, Mdns.PAIRING)
-        if (ports.isEmpty()) throw IllegalStateException("Could not find the pairing dialog. Keep it open on screen and try again.")
+        if (ports.isEmpty()) throw IllegalStateException(ctx.getString(R.string.could_not_find_the_pairing))
         val key = AdbKey.getOrCreate()
         val pub = key.certificate.publicKey as RSAPublicKey
         val ours = PeerInfo(PeerInfo.Type.ADB_RSA_PUB_KEY, AdbPublicKey.encode(pub.modulus, pub.publicExponent, "monomode@${Build.MODEL.filter { it.isLetterOrDigit() }}").toByteArray())
@@ -78,12 +78,12 @@ object Pairing {
                 prefs(ctx).edit().putBoolean("paired", true).apply()
                 return
             } catch (e: WrongCodeException) {
-                throw IllegalStateException("That code did not match. Check the code on screen and try again.")
+                throw IllegalStateException(ctx.getString(R.string.that_code_did_not_match))
             } catch (e: Exception) {
                 last = e
             }
         }
-        throw IllegalStateException("Pairing failed (${last?.message}). Try again.")
+        throw IllegalStateException(ctx.getString(R.string.pairing_failed_1x_try_again, last?.message))
     }
 
     class PairReceiver : BroadcastReceiver() {
@@ -93,9 +93,9 @@ object Pairing {
             thread {
                 try {
                     pair(ctx, code)
-                    done(ctx, "Go back to MonoMode to check this phone.")
+                    done(ctx, ctx.getString(R.string.go_back_to_monomode_to))
                 } catch (e: Exception) {
-                    prompt(ctx, e.message ?: "Pairing failed. Try again.")
+                    prompt(ctx, e.message ?: ctx.getString(R.string.pairing_failed_try_again))
                 } finally {
                     pending.finish()
                 }

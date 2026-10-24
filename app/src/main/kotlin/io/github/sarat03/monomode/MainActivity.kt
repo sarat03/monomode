@@ -168,7 +168,7 @@ class MainActivity : ComponentActivity() {
             ps.busy?.let { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(it, style = MaterialTheme.typography.bodyMedium) } }
             ps.message?.let { Note(it) }
             when {
-                tab == Page.SETTINGS -> Paged("Settings") { SettingsPage() }
+                tab == Page.SETTINGS -> Paged(getString(R.string.settings)) { SettingsPage() }
                 ps.connected -> SessionScreen()
                 !paired -> PairScreen()
                 else -> StartScreen()
@@ -179,21 +179,21 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun PairScreen() = Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         AppHeader()
-        Text("Set up once", style = MaterialTheme.typography.headlineSmall)
-        Text("Pair once over Wireless debugging. After that MonoMode connects by itself.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(getString(R.string.set_up_once), style = MaterialTheme.typography.headlineSmall)
+        Text(getString(R.string.pair_once_over_wireless_debugging), color = MaterialTheme.colorScheme.onSurfaceVariant)
         val dev = devOptionsOn()
         // the first step only while Developer options are hidden; the button then opens About phone for it
         Steps(*listOfNotNull(
-            if (dev) null else "In About phone, tap Build number 7 times.",
-            "In Developer options, turn on Wireless debugging.",
-            "Tap Pair device with pairing code.",
-            "Type the code into the MonoMode notification.",
+            if (dev) null else getString(R.string.in_about_phone_tap_build),
+            getString(R.string.in_developer_options_turn_on),
+            getString(R.string.tap_pair_device_with_pairing),
+            getString(R.string.type_the_code_into_the),
         ).toTypedArray())
         Button({
             if (Build.VERSION.SDK_INT >= 33) requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 0)
             Pairing.prompt(this@MainActivity)
             openDeveloperOptions()
-        }, Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text(if (dev) "Start pairing" else "Open About phone") }
+        }, Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text(if (dev) getString(R.string.start_pairing) else getString(R.string.open_about_phone)) }
     }
 
     @Composable
@@ -201,17 +201,17 @@ class MainActivity : ComponentActivity() {
         AppHeader()
         Hero(
             neutralTone(), if (ps.wirelessOn) Icons.Outlined.CheckCircle else Icons.Outlined.Info,
-            if (ps.wirelessOn) "Ready" else "Not connected",
-            if (ps.wirelessOn) "Connecting to this phone." else "Turn on Wireless debugging, then come back.",
+            if (ps.wirelessOn) getString(R.string.ready) else getString(R.string.not_connected),
+            if (ps.wirelessOn) getString(R.string.connecting_to_this_phone) else getString(R.string.turn_on_wireless_debugging_then),
         )
         if (!ps.wirelessOn) Button(::openDeveloperOptions, Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
-            Text(if (devOptionsOn()) "Open Developer options" else "Open About phone")
+            Text(if (devOptionsOn()) getString(R.string.open_developer_options) else getString(R.string.open_about_phone))
         }
-        if (!ps.wirelessOn && !devOptionsOn()) Text("Developer options are hidden. In About phone, tap Build number 7 times.",
+        if (!ps.wirelessOn && !devOptionsOn()) Text(getString(R.string.developer_options_are_hidden_in),
             Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         // Retry looks again for Wireless debugging, then connects and checks; shown per PhoneState.retryShown
-        if (ps.retryShown) OutlinedButton(ph::connect, Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled = ps.busy == null) { Text("Retry") }
-        ps.activeMode?.let { HomeRowStatic("${it.label} is on", "Connect to change it or turn it off.") }
+        if (ps.retryShown) OutlinedButton(ph::connect, Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled = ps.busy == null) { Text(getString(R.string.retry)) }
+        ps.activeMode?.let { HomeRowStatic(getString(R.string.s_1x_is_on, it.label), getString(R.string.connect_to_change_it_or)) }
     }
 
     /** App name on the left, settings gear on the right. */
@@ -220,8 +220,8 @@ class MainActivity : ComponentActivity() {
         Box(Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
             Icon(painterResource(R.drawable.ic_launcher_monochrome), null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onPrimary)
         }
-        Text("MonoMode", Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.headlineMedium)
-        IconButton({ tab = Page.SETTINGS }) { Icon(Icons.Outlined.Settings, "Settings") }
+        Text(getString(R.string.monomode), Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.headlineMedium)
+        IconButton({ tab = Page.SETTINGS }) { Icon(Icons.Outlined.Settings, getString(R.string.settings)) }
     }
 
     @Composable
@@ -234,8 +234,8 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun SessionScreen() = when (tab) {
-        Page.CHECK -> Paged("Network & access") { CheckTab() }
-        Page.CLEAN -> Paged("App cleaner", bottom = cleanupBar()) { CleanupTab() }
+        Page.CHECK -> Paged(getString(R.string.network_access)) { CheckTab() }
+        Page.CLEAN -> Paged(getString(R.string.app_cleaner), bottom = cleanupBar()) { CleanupTab() }
         Page.MODES -> openMode?.let { p -> Paged(p.label, back = { openMode = null; tab = Page.HOME }) { ModePage(p) } } ?: HomeScroll()
         else -> HomeScroll()
     }
@@ -249,7 +249,7 @@ class MainActivity : ComponentActivity() {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             BackHandler(onBack = back)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back") }
+                IconButton(back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, getString(R.string.back)) }
                 Text(title, Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineSmall)
             }
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) { content() }
@@ -279,25 +279,25 @@ class MainActivity : ComponentActivity() {
     /** App settings, reachable from the gear on Home, with or without a session. */
     @Composable
     private fun SettingsPage() {
-        Section("Connection")
-        SettingRow("Pairing", if (paired) "This phone is paired with MonoMode." else "Not paired yet.") {
+        Section(getString(R.string.connection))
+        SettingRow(getString(R.string.pairing), if (paired) getString(R.string.this_phone_is_paired_with) else getString(R.string.not_paired_yet)) {
             if (paired) OutlinedButton({ Pairing.forget(applicationContext); paired = false; ph.disconnect(); tab = Page.HOME },
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Forget and pair again") }
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(getString(R.string.forget_and_pair_again)) }
         }
-        Section("Appearance")
-        SettingRow("Theme", "Colours for MonoMode and its mode home screens.") {
+        Section(getString(R.string.appearance))
+        SettingRow(getString(R.string.theme), getString(R.string.colours_for_monomode_and_its)) {
             Column {
                 for ((key, name) in Appearance.options) Row(
                     Modifier.fillMaxWidth().heightIn(min = 48.dp).selectable(Appearance.mode == key, role = Role.RadioButton) { Appearance.set(applicationContext, key) },
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) { RadioButton(Appearance.mode == key, null); Text(name) }
+                ) { RadioButton(Appearance.mode == key, null); Text(getString(name)) }
             }
         }
-        Section("Backups")
-        SettingRow("Restore lists", "A copy of what was removed is saved in Downloads/MonoMode.")
-        Section("About")
-        SettingRow("MonoMode", "MonoMode ${packageManager.getPackageInfo(packageName, 0).versionName}. Open source, MIT licence.") {
-            OutlinedButton({ startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/sarat03/monomode"))) }) { Text("Source code") }
+        Section(getString(R.string.backups))
+        SettingRow(getString(R.string.restore_lists), getString(R.string.a_copy_of_what_was))
+        Section(getString(R.string.about))
+        SettingRow(getString(R.string.app_name), getString(R.string.about_version, packageManager.getPackageInfo(packageName, 0).versionName)) {
+            OutlinedButton({ startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/sarat03/monomode"))) }) { Text(getString(R.string.source_code)) }
         }
     }
 
@@ -317,7 +317,7 @@ class MainActivity : ComponentActivity() {
         val look = r?.count { it.level == Level.LOOK && !it.system } ?: 0
         val on = ps.activeMode
         AppHeader()
-        Section("Modes")
+        Section(getString(R.string.modes))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             for (p in Profile.entries) {
                 val t = if (p == on) Tone(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer) else neutralTone()
@@ -325,22 +325,22 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.weight(1f).clickable { openMode = p; tab = Page.MODES }) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Icon(p.icon, null, Modifier.size(28.dp))
-                        Text(if (p == on) "On" else "Off", style = MaterialTheme.typography.headlineMedium)
+                        Text(if (p == on) getString(R.string.on) else getString(R.string.off), style = MaterialTheme.typography.headlineMedium)
                         Text(p.label, style = MaterialTheme.typography.titleMedium)
                         Text(p.what, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
         }
-        Section("Tools")
-        HomeRow(AppIcons.Shield, "Network & access", if (r == null) "See which apps use the internet" else if (look == 0) "Nothing to look at" else "$look to look at") { tab = Page.CHECK }
-        HomeRow(AppIcons.Broom, "App cleaner", if (ps.removed.isEmpty()) "Remove bloatware and unused apps" else "${ps.removed.size} removed or disabled") { tab = Page.CLEAN }
+        Section(getString(R.string.tools))
+        HomeRow(AppIcons.Shield, getString(R.string.network_access), if (r == null) getString(R.string.see_which_apps_use_the) else if (look == 0) getString(R.string.nothing_to_look_at) else getString(R.string.s_1x_to_look_at, look)) { tab = Page.CHECK }
+        HomeRow(AppIcons.Broom, getString(R.string.app_cleaner), if (ps.removed.isEmpty()) getString(R.string.remove_bloatware_and_unused_apps) else getString(R.string.s_1x_removed_or_disabled, ps.removed.size)) { tab = Page.CLEAN }
         val w = warnTone()
         Card(colors = CardDefaults.cardColors(w.bg, w.fg), modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Icon(Icons.Outlined.Warning, null)
-                Text("Wireless debugging is on", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                TextButton(ph::finish, enabled = ps.busy == null) { Text("Turn off", color = w.fg) }
+                Text(getString(R.string.wireless_debugging_is_on), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                TextButton(ph::finish, enabled = ps.busy == null) { Text(getString(R.string.turn_off), color = w.fg) }
             }
         }
     }
@@ -366,21 +366,21 @@ class MainActivity : ComponentActivity() {
         val tone = when { r == null -> neutralTone(); look == 0 -> safeTone(); else -> warnTone() }
         Hero(
             tone, if (r != null && look == 0) Icons.Outlined.CheckCircle else Icons.Outlined.Info,
-            when { r == null -> "Not checked yet"; look == 0 -> "Nothing to look at"; else -> "$look thing${if (look == 1) "" else "s"} to look at" },
-            if (r == null) "Read-only. Nothing is changed." else if (look == 0) "Checked just now. Nothing was changed." else "Everything else looks normal.",
+            when { r == null -> getString(R.string.not_checked_yet); look == 0 -> getString(R.string.nothing_to_look_at); else -> resources.getQuantityString(R.plurals.things_to_look_at, look, look) },
+            if (r == null) getString(R.string.read_only_nothing_is_changed) else if (look == 0) getString(R.string.checked_just_now_nothing_was) else getString(R.string.everything_else_looks_normal),
         ) {
             Button((ph::check), enabled = ps.busy == null, colors = ButtonDefaults.buttonColors(tone.fg, tone.bg)) {
-                Text(if (r == null) "Check" else "Check again")
+                Text(if (r == null) getString(R.string.check) else getString(R.string.check_again))
             }
         }
         val (system, own) = (r ?: return).sortedBy { it.level }.partition { it.system }
         val (needs, fine) = own.partition { it.level == Level.LOOK }
-        if (needs.isNotEmpty()) { Section("Needs a look"); needs.forEach { FindingCard(it) } }
-        if (fine.isNotEmpty()) { if (fine.any { it.apps.isNotEmpty() }) Section("Using the internet"); fine.forEach { FindingCard(it) } }
+        if (needs.isNotEmpty()) { Section(getString(R.string.needs_a_look)); needs.forEach { FindingCard(it) } }
+        if (fine.isNotEmpty()) { if (fine.any { it.apps.isNotEmpty() }) Section(getString(R.string.using_the_internet)); fine.forEach { FindingCard(it) } }
         if (system.isNotEmpty()) {
             var open by remember { mutableStateOf(false) }
-            ListRow("Built-in apps", "${system.size} found, usually how Android works") { open = true }
-            if (open) ListDialog("Built-in apps", "Apps built into the phone. Their access is usually how Android works.", { open = false }) {
+            ListRow(getString(R.string.built_in_apps), getString(R.string.s_1x_found_usually_how_android, system.size)) { open = true }
+            if (open) ListDialog(getString(R.string.built_in_apps), getString(R.string.apps_built_into_the_phone), { open = false }) {
                 items(system) { FindingCard(it) }
             }
         }
@@ -401,21 +401,21 @@ class MainActivity : ComponentActivity() {
                     Text(f.title, style = MaterialTheme.typography.titleMedium)
                 }
                 Text(f.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (grouped) Text("Tap to see all ${f.apps.size} apps", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                if (grouped) Text(getString(R.string.tap_to_see_all_1x, f.apps.size), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                 // one app to act on: its own settings page is where its access is turned off
                 else if (f.level == Level.LOOK && !f.system && f.apps.size == 1) OutlinedButton({
                     startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.fromParts("package", f.apps.first(), null)))
-                }) { Text("Open its settings") }
+                }) { Text(getString(R.string.open_its_settings)) }
             }
         }
         if (show) AlertDialog(
             onDismissRequest = { show = false },
-            confirmButton = { TextButton({ show = false }) { Text("Close") } },
+            confirmButton = { TextButton({ show = false }) { Text(getString(R.string.close)) } },
             title = { Text("${f.apps.size} apps") },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     // these share one Android user id, so the system cannot say which of them made the connection
-                    Text("They share one user id, so Android cannot tell which of them is doing it.", style = MaterialTheme.typography.bodyMedium)
+                    Text(getString(R.string.they_share_one_user_id), style = MaterialTheme.typography.bodyMedium)
                     for (pkg in f.apps.sortedBy { label(it).lowercase() }) Column {
                         Text(label(pkg))
                         if (label(pkg) != pkg) Text(pkg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -428,18 +428,18 @@ class MainActivity : ComponentActivity() {
     /** Uninstall and Disable stay in sight at the bottom while the list scrolls; Restore has its own there. */
     private fun cleanupBar(): (@Composable () -> Unit)? = when {
         cleanFilter == 2 -> if (ps.removed.isEmpty()) null else {
-            { Button({ ph.restore(restorePick.toSet()); restorePick.clear() }, Modifier.fillMaxWidth().heightIn(min = 56.dp), enabled = ps.busy == null && restorePick.isNotEmpty()) { Text("Restore ${restorePick.size}") } }
+            { Button({ ph.restore(restorePick.toSet()); restorePick.clear() }, Modifier.fillMaxWidth().heightIn(min = 56.dp), enabled = ps.busy == null && restorePick.isNotEmpty()) { Text(getString(R.string.restore_1x, restorePick.size)) } }
         }
         ps.scan == null -> null
         else -> {
             {
                 // Uninstall only for built-in apps: their apk stays on the phone so Restore works; a Play Store app's is deleted
                 val playApps = selected.filterNot { it in ps.scan!!.system }
-                if (playApps.isNotEmpty()) Text("${playApps.joinToString { label(it) }} came from the Play Store. MonoMode can only disable these; to uninstall one, use the Play Store, where you can reinstall it later.", style = MaterialTheme.typography.bodySmall)
+                if (playApps.isNotEmpty()) Text(getString(R.string.play_store_apps_disable_only, playApps.joinToString { label(it) }), style = MaterialTheme.typography.bodySmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("${selected.size} selected", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    OutlinedButton({ ph.remove(selected.toList(), Method.DISABLE); selected.clear() }, Modifier.heightIn(min = 48.dp), enabled = ps.busy == null && selected.isNotEmpty()) { Text("Disable") }
-                    Button({ ph.remove(selected.toList(), Method.REMOVE); selected.clear() }, Modifier.heightIn(min = 48.dp), enabled = ps.busy == null && selected.isNotEmpty() && playApps.isEmpty()) { Text("Uninstall") }
+                    OutlinedButton({ ph.remove(selected.toList(), Method.DISABLE); selected.clear() }, Modifier.heightIn(min = 48.dp), enabled = ps.busy == null && selected.isNotEmpty()) { Text(getString(R.string.disable)) }
+                    Button({ ph.remove(selected.toList(), Method.REMOVE); selected.clear() }, Modifier.heightIn(min = 48.dp), enabled = ps.busy == null && selected.isNotEmpty() && playApps.isEmpty()) { Text(getString(R.string.uninstall)) }
                 }
             }
         }
@@ -447,11 +447,11 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun CleanupTab() {
-        Text("Remove bloatware and system apps you don't use. Every removal can be restored.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(getString(R.string.remove_bloatware_and_system_apps), color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(cleanFilter == 0, { cleanFilter = 0 }, { Text("Apps") })
-            FilterChip(cleanFilter == 1, { cleanFilter = 1 }, { Text("Background") }, enabled = ps.scan != null)
-            FilterChip(cleanFilter == 2, { cleanFilter = 2 }, { Text("Removed · ${ps.removed.size}") })
+            FilterChip(cleanFilter == 0, { cleanFilter = 0 }, { Text(getString(R.string.apps)) })
+            FilterChip(cleanFilter == 1, { cleanFilter = 1 }, { Text(getString(R.string.background)) }, enabled = ps.scan != null)
+            FilterChip(cleanFilter == 2, { cleanFilter = 2 }, { Text(getString(R.string.removed_1x, ps.removed.size)) })
         }
         if (cleanFilter == 2) return RestoreList()
         val sc = ps.scan
@@ -462,24 +462,24 @@ class MainActivity : ComponentActivity() {
                 launcherPkgs = launcherApps(applicationContext).map { it.first }.toSet()
                 // the phone's own app list, not a list per brand; generic.txt only adds notes for apps we know
                 ph.scan(parseList(assets.open("generic.txt").bufferedReader().readText()), packageName)
-            }, Modifier.fillMaxWidth().heightIn(min = 56.dp), enabled = ps.busy == null) { Text("Show apps") }
+            }, Modifier.fillMaxWidth().heightIn(min = 56.dp), enabled = ps.busy == null) { Text(getString(R.string.show_apps)) }
         } else {
             val entries = ps.entries
             val p = sc.plan
             val others = remember(sc) { sc.others.map { it to label(it) }.sortedBy { it.second.lowercase() } }
-            OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), placeholder = { Text("Search apps") }, leadingIcon = { Icon(Icons.Outlined.Search, null) },
+            OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), placeholder = { Text(getString(R.string.search_apps)) }, leadingIcon = { Icon(Icons.Outlined.Search, null) },
                 singleLine = true, shape = MaterialTheme.shapes.large)
             val withIcon = launcherPkgs
             if (cleanFilter == 1) {
-                Text("Many are needed by the phone. Leave the ones you don't know.",
+                Text(getString(R.string.many_are_needed_by_the),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 PickGroup(others.filterNot { it.first in withIcon })
             } else {
-                PickGroup(entries.filter { it.pkg in p.todo }.map { e -> e.pkg to label(e.pkg) + if (e.risk != Risk.SAFE) "  (${e.risk.name.lowercase()}: check you do not use it)" else "" } +
+                PickGroup(entries.filter { it.pkg in p.todo }.map { e -> e.pkg to label(e.pkg) + if (e.risk != Risk.SAFE) getString(R.string.risk_check_you_use_it, e.risk.name.lowercase()) else "" } +
                     others.filter { it.first in withIcon })
-                if (p.already.isNotEmpty()) Text("Already off: ${p.already.size}", Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (p.already.isNotEmpty()) Text(getString(R.string.already_off_1x, p.already.size), Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text("Core apps are hidden. If a batch breaks Home, calls or the keyboard, it is undone.",
+            Text(getString(R.string.core_apps_are_hidden_if),
                 Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -488,7 +488,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun PickGroup(apps: List<Pair<String, String>>) {
         val shown = apps.filter { it.matches(query) }
-        if (shown.isEmpty()) return Text("No apps match.", Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (shown.isEmpty()) return Text(getString(R.string.no_apps_match), Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         Panel(Modifier.fillMaxWidth()) {
             shown.forEachIndexed { i, (pkg, name) ->
                 PickRowShown(pkg, name)
@@ -501,12 +501,12 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun RestoreList() {
         val done = ps.removed
-        if (done.isEmpty()) return Text("Nothing removed yet.", Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (done.isEmpty()) return Text(getString(R.string.nothing_removed_yet), Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Nothing was deleted.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            TextButton({ restorePick.clear(); restorePick += done.keys }, enabled = ps.busy == null) { Text("Select all") }
+            Text(getString(R.string.nothing_was_deleted), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TextButton({ restorePick.clear(); restorePick += done.keys }, enabled = ps.busy == null) { Text(getString(R.string.select_all)) }
         }
-        for ((method, title) in listOf(Method.REMOVE to "Uninstalled", Method.DISABLE to "Disabled")) {
+        for ((method, title) in listOf(Method.REMOVE to getString(R.string.uninstalled), Method.DISABLE to getString(R.string.disabled))) {
             val group = done.filterValues { it == method }.keys.sortedBy { label(it).lowercase() }
             if (group.isEmpty()) continue
             Section("$title · ${group.size}")
@@ -545,8 +545,8 @@ class MainActivity : ComponentActivity() {
     private fun label(pkg: String) = labels.getOrPut(pkg) { appLabel(this, pkg) }
 
     private val Profile.what get() = when (this) {
-        Profile.KIOSK -> "Only the apps you choose."
-        Profile.E_READER -> "A calm, grey screen for reading."
+        Profile.KIOSK -> getString(R.string.only_the_apps_you_choose)
+        Profile.E_READER -> getString(R.string.a_calm_grey_screen_for)
     }
     private val Profile.icon get() = when (this) { Profile.KIOSK -> AppIcons.Grid; Profile.E_READER -> AppIcons.Book }
 
@@ -558,19 +558,19 @@ class MainActivity : ComponentActivity() {
         val off = remember(profile) { mutableStateListOf(*modes.off(profile).toTypedArray()) }
         Hero(
             if (on == profile) safeTone() else neutralTone(), profile.icon,
-            if (on == profile) "$name is on" else "$name is off",
-            if (on == profile) "Your settings come back when you turn it off."
-            else if (on != null) "Turn off ${on.label} first. One mode at a time." else profile.what,
+            if (on == profile) getString(R.string.s_1x_is_on, name) else getString(R.string.s_1x_is_off, name),
+            if (on == profile) getString(R.string.your_settings_come_back_when)
+            else if (on != null) getString(R.string.turn_off_1x_first_one, on.label) else profile.what,
         ) {
             val t = if (on == profile) safeTone() else neutralTone()
             if (on == profile) Button({
                 ph.turnOff()
-            }, enabled = ps.busy == null, colors = ButtonDefaults.buttonColors(t.fg, t.bg)) { Text("Turn off") }
+            }, enabled = ps.busy == null, colors = ButtonDefaults.buttonColors(t.fg, t.bg)) { Text(getString(R.string.turn_off)) }
             else Button({
                 ph.turnOn(profile)
-            }, enabled = ps.busy == null && on == null) { Text("Turn on") }
+            }, enabled = ps.busy == null && on == null) { Text(getString(R.string.turn_on)) }
         }
-        Section("What changes")
+        Section(getString(R.string.what_changes))
         Panel(Modifier.fillMaxWidth()) {
             profile.options.keys.forEachIndexed { i, option ->
                 Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).toggleable(option !in off, enabled = on == null, role = Role.Switch) { keep ->
@@ -584,13 +584,13 @@ class MainActivity : ComponentActivity() {
                 if (i < profile.options.size - 1) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
         }
-        if (on == profile) Text("Turn the mode off to change these.", Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if ("Own home screen" !in off) { Section("Apps"); HomePicker(profile) }
+        if (on == profile) Text(getString(R.string.turn_the_mode_off_to), Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if ("Own home screen" !in off) { Section(getString(R.string.apps)); HomePicker(profile) }
         if (profile == Profile.KIOSK) {
-            Section("Pin one app")
+            Section(getString(R.string.pin_one_app))
             if (realmeGestures()) Text(
                 // checked on the Realme XT: a swipe never reaches a third-party home screen
-                "On this phone a swipe leaves Kiosk. Pin an app to stay in one app.",
+                getString(R.string.on_this_phone_a_swipe),
                 Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             PinPicker(on == profile, askPin = "Ask for PIN to unpin" !in off)
@@ -607,8 +607,8 @@ class MainActivity : ComponentActivity() {
             if (profile == Profile.E_READER) {
                 var reader by remember { mutableStateOf(modes.reader(all.map { it.first })) }
                 var choose by remember { mutableStateOf(false) }
-                ListRow("Reading app", all.firstOrNull { it.first == reader }?.second ?: "None found: choose one") { choose = true }
-                if (choose) ListDialog("Reading app", "Opens from Continue reading.", { choose = false }, search = true) { q ->
+                ListRow(getString(R.string.reading_app), all.firstOrNull { it.first == reader }?.second ?: getString(R.string.none_found_choose_one)) { choose = true }
+                if (choose) ListDialog(getString(R.string.reading_app), getString(R.string.opens_from_continue_reading), { choose = false }, search = true) { q ->
                     items(all.filter { it.matches(q) }, key = { it.first }) { (pkg, label) ->
                         Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).selectable(pkg == reader, role = Role.RadioButton) { reader = pkg; modes.setReader(pkg); choose = false }, verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(pkg == reader, null); Spacer(Modifier.width(12.dp)); AppIcon(pkg); Text(label, Modifier.padding(start = 12.dp))
@@ -617,8 +617,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
             val names = all.filter { it.first in picked }.joinToString { it.second }
-            ListRow(if (profile == Profile.E_READER) "Other apps" else "Apps on the home screen", names.ifEmpty { "None chosen" }) { open = true }
-            if (open) ListDialog(if (profile == Profile.E_READER) "Other apps" else "Apps on the home screen", null, { open = false }, search = true) { q ->
+            ListRow(if (profile == Profile.E_READER) getString(R.string.other_apps) else getString(R.string.apps_on_the_home_screen), names.ifEmpty { getString(R.string.none_chosen) }) { open = true }
+            if (open) ListDialog(if (profile == Profile.E_READER) getString(R.string.other_apps) else getString(R.string.apps_on_the_home_screen), null, { open = false }, search = true) { q ->
                 items(all.filter { it.matches(q) }, key = { it.first }) { (pkg, label) ->
                     Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).toggleable(pkg in picked, role = Role.Checkbox) { if (it) picked += pkg else picked -= pkg; modes.setApps(profile, picked.toSet()) }, verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(pkg in picked, null); Spacer(Modifier.width(12.dp)); AppIcon(pkg); Text(label, Modifier.padding(start = 12.dp))
@@ -638,7 +638,7 @@ class MainActivity : ComponentActivity() {
     private fun usesGestures() = Settings.Secure.getInt(contentResolver, "navigation_mode", 0) == 2 ||
         Settings.Secure.getInt(contentResolver, "hide_navigationbar_enable", 0) > 0
 
-    private fun unpinHow() = if (usesGestures()) "swipe up from the bottom of the screen and hold" else "touch and hold Back and Recents together"
+    private fun unpinHow() = if (usesGestures()) getString(R.string.swipe_up_from_the_bottom) else getString(R.string.touch_and_hold_back_and)
 
     /** Pinning hides MonoMode, so it is the last step: pin, then switch Wireless debugging off. */
     @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -647,7 +647,7 @@ class MainActivity : ComponentActivity() {
         var apps by remember { mutableStateOf<List<Pair<String, String>>?>(null) }
         Column {
             // always shown, so it is clear pinning exists; it needs Kiosk on, which enables screen pinning
-            ListRow("Pin an app", if (kioskOn) "One app fills the screen until you unpin it" else "Turn Kiosk on first, then choose the app") {
+            ListRow(getString(R.string.pin_an_app), if (kioskOn) getString(R.string.one_app_fills_the_screen) else getString(R.string.turn_kiosk_on_first_then)) {
                 if (kioskOn) run {
                     // pin() starts a component; the launch intent names the app's own start screen
                     apps = launcherApps(applicationContext).mapNotNull { (pkg, label) ->
@@ -657,7 +657,7 @@ class MainActivity : ComponentActivity() {
             }
             // what pinning does, up front: people were surprised by the PIN prompt and by debugging being off afterwards
             Text(
-                "Pinning turns off Wireless debugging. To unpin, ${unpinHow()}.",
+                getString(R.string.pinning_turns_off_wireless_debugging, unpinHow()),
                 Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -665,13 +665,13 @@ class MainActivity : ComponentActivity() {
             // Material bottom sheet: the list rises from where the thumb is, with how to unpin above it
             var q by remember { mutableStateOf("") }
             ModalBottomSheet({ apps = null }) { Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Pin an app", Modifier.padding(horizontal = 8.dp).semantics { heading() }, style = MaterialTheme.typography.headlineSmall)
-                Text("The app fills the screen and Wireless debugging switches off.", Modifier.padding(horizontal = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(getString(R.string.pin_an_app), Modifier.padding(horizontal = 8.dp).semantics { heading() }, style = MaterialTheme.typography.headlineSmall)
+                Text(getString(R.string.the_app_fills_the_screen), Modifier.padding(horizontal = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).background(MaterialTheme.colorScheme.primaryContainer).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Icon(Icons.Outlined.Info, null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text("To unpin: ${unpinHow()}${if (askPin) ". The phone then asks for your PIN." else "."}", color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    Text(getString(if (askPin) R.string.to_unpin_asks_pin else R.string.to_unpin, unpinHow()), color = MaterialTheme.colorScheme.onPrimaryContainer)
                 }
-                OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), placeholder = { Text("Search") }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true, shape = MaterialTheme.shapes.large)
+                OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), placeholder = { Text(getString(R.string.search)) }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true, shape = MaterialTheme.shapes.large)
                 LazyColumn(Modifier.heightIn(max = 480.dp)) { items(list.filter { it.matches(q) }) { (component, label) ->
                     Row(
                         Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(MaterialTheme.shapes.medium).clickable(enabled = ps.busy == null) {
@@ -704,7 +704,7 @@ class MainActivity : ComponentActivity() {
             Row(Modifier.padding(start = 12.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Warning, null)
                 Text(text, Modifier.weight(1f).padding(horizontal = 10.dp, vertical = 8.dp))
-                IconButton(ph::dismiss) { Icon(Icons.Outlined.Close, "Close") }
+                IconButton(ph::dismiss) { Icon(Icons.Outlined.Close, getString(R.string.close)) }
             }
         }
     }
@@ -727,12 +727,12 @@ class MainActivity : ComponentActivity() {
         var q by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = onClose,
-            confirmButton = { TextButton(onClose) { Text("Done") } },
+            confirmButton = { TextButton(onClose) { Text(getString(R.string.done)) } },
             title = { Text(title) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     note?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
-                    if (search) OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), label = { Text("Search") }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true)
+                    if (search) OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), label = { Text(getString(R.string.search)) }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true)
                     LazyColumn(Modifier.heightIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { items(q) }
                 }
             },

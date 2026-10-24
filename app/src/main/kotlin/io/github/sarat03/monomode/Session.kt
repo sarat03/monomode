@@ -44,7 +44,7 @@ class Session private constructor(private val ctx: Context, private val transpor
         /** Finds the connect port by mDNS and connects with our paired key. */
         fun open(ctx: Context): Session {
             val ports = Mdns.ports(ctx, Mdns.CONNECT)
-            if (ports.isEmpty()) throw IllegalStateException("Could not find Wireless debugging. Make sure it is on.")
+            if (ports.isEmpty()) throw IllegalStateException(ctx.getString(R.string.could_not_find_wireless_debugging))
             var last: Exception? = null
             for (port in ports) {
                 var t: TlsAdbTransport? = null
@@ -55,7 +55,7 @@ class Session private constructor(private val ctx: Context, private val transpor
                     t?.close(); last = e
                 }
             }
-            throw IllegalStateException("Could not connect (${last?.message}). If you paired before, pair again.")
+            throw IllegalStateException(ctx.getString(R.string.could_not_connect_1x_if, last?.message))
         }
     }
 }

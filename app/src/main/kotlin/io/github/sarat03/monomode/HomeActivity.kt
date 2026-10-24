@@ -148,7 +148,7 @@ class HomeActivity : ComponentActivity() {
             HorizontalDivider(Modifier.padding(vertical = 8.dp), color = ink)
             Text(DateFormat.getDateInstance(DateFormat.FULL).format(now), color = ink, fontFamily = serif, fontSize = 18.sp)
             Spacer(Modifier.height(40.dp))
-            if (main == null) Text("No reading app found. Install one (ReadEra, KOReader…) or choose it in MonoMode, under E-reader mode.", color = ink, fontFamily = serif, fontSize = 20.sp)
+            if (main == null) Text(getString(R.string.no_reading_app_found_install), color = ink, fontFamily = serif, fontSize = 20.sp)
             else Row(
                 Modifier.fillMaxWidth().border(2.dp, ink).clickable { open(main.pkg) }.padding(20.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically,
@@ -156,7 +156,7 @@ class HomeActivity : ComponentActivity() {
                 // a book outline, like the cover slot on a Kobo or Kindle home screen
                 Box(Modifier.size(56.dp, 80.dp).border(1.5.dp, ink))
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Continue reading", color = ink, fontFamily = serif, fontSize = 22.sp, maxLines = 1)
+                    Text(getString(R.string.continue_reading), color = ink, fontFamily = serif, fontSize = 22.sp, maxLines = 1)
                     Text(main.label, color = ink, fontFamily = serif, fontSize = 18.sp)
                 }
             }
@@ -166,7 +166,7 @@ class HomeActivity : ComponentActivity() {
                 HorizontalDivider(color = Color.Gray)
             }
             Spacer(Modifier.height(32.dp))
-            Text("MonoMode", Modifier.heightIn(min = 48.dp).clickable { openMonoMode() }.padding(vertical = 14.dp), color = ink.copy(alpha = 0.7f), fontFamily = serif, fontSize = 14.sp)
+            Text(getString(R.string.monomode), Modifier.heightIn(min = 48.dp).clickable { openMonoMode() }.padding(vertical = 14.dp), color = ink.copy(alpha = 0.7f), fontFamily = serif, fontSize = 14.sp)
         }
     }
 
@@ -180,7 +180,7 @@ class HomeActivity : ComponentActivity() {
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     DateFormat.getTimeInstance(DateFormat.SHORT).format(now),
-                    Modifier.combinedClickable(onLongClickLabel = "Open MonoMode", onClick = {}, onLongClick = ::openMonoMode).padding(8.dp),
+                    Modifier.combinedClickable(onLongClickLabel = getString(R.string.open_monomode), onClick = {}, onLongClick = ::openMonoMode).padding(8.dp),
                     color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.displayLarge,
                 )
@@ -188,7 +188,7 @@ class HomeActivity : ComponentActivity() {
                 Text("$batteryLevel%", Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium)
             }
             Text(DateFormat.getDateInstance(DateFormat.FULL).format(now), Modifier.padding(horizontal = 8.dp), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium)
-            if (apps.isEmpty()) Text("No apps chosen. Open MonoMode from the bottom of the screen and choose them under Kiosk mode.", Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurface)
+            if (apps.isEmpty()) Text(getString(R.string.no_apps_chosen_open_monomode), Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurface)
             LazyVerticalGrid(GridCells.Adaptive(icon + 32.dp), Modifier.weight(1f).padding(top = 32.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
                 items(apps, key = { it.pkg }) { a ->
                     Column(Modifier.clickable { open(a.pkg) }.padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -202,8 +202,8 @@ class HomeActivity : ComponentActivity() {
             }
             // visible but needs a hold, so a guest does not leave kiosk by accident
             Text(
-                "Hold for MonoMode",
-                Modifier.align(Alignment.CenterHorizontally).combinedClickable(onLongClickLabel = "Open MonoMode", onClick = {}, onLongClick = ::openMonoMode).padding(12.dp),
+                getString(R.string.hold_for_monomode),
+                Modifier.align(Alignment.CenterHorizontally).combinedClickable(onLongClickLabel = getString(R.string.open_monomode), onClick = {}, onLongClick = ::openMonoMode).padding(12.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelMedium,
             )
@@ -214,7 +214,7 @@ class HomeActivity : ComponentActivity() {
 
 /** Settings > Appearance; "system" follows the phone's light or dark setting. */
 object Appearance {
-    val options = listOf("system" to "Follow the phone", "light" to "Light", "dark" to "Dark")
+    val options = listOf("system" to R.string.appearance_system, "light" to R.string.appearance_light, "dark" to R.string.appearance_dark)
     var mode by mutableStateOf("system")
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("appearance", Context.MODE_PRIVATE)
     fun load(ctx: Context) { mode = prefs(ctx).getString("mode", "system")!! }
