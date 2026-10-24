@@ -60,6 +60,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -70,7 +71,6 @@ import java.util.Date
 
 /** The home screen while a mode with "Own home screen" is on, styled for that mode. */
 class HomeActivity : ComponentActivity() {
-    private class App(val pkg: String, val label: String, val icon: ImageBitmap)
 
     private var apps by mutableStateOf<List<App>>(emptyList())
     private var mode by mutableStateOf<Profile?>(null)
@@ -89,7 +89,7 @@ class HomeActivity : ComponentActivity() {
         onBackPressedDispatcher.addCallback(this) {}
         setContent {
             LaunchedEffect(Unit) { while (true) { now = Date(); batteryLevel = battery(); delay(30_000) } }
-            if (mode == Profile.E_READER) Reader() else Kiosk()
+            if (mode == Profile.E_READER) Reader() else KioskHome(apps, now, batteryLevel, { open(it) }, ::openMonoMode)
         }
         // full screen, after setContent (the window has no decor before it on Android 11): the home screens draw their own clock; a swipe from the top shows the bars briefly
         window.insetsController?.apply {
@@ -169,48 +169,50 @@ class HomeActivity : ComponentActivity() {
             Text(getString(R.string.monomode), Modifier.heightIn(min = 48.dp).clickable { openMonoMode() }.padding(vertical = 14.dp), color = ink.copy(alpha = 0.7f), fontFamily = serif, fontSize = 14.sp)
         }
     }
-
-    /** A grid of the chosen apps. The way back to MonoMode is a long press on the clock, so a guest does not stumble out. */
-    @OptIn(ExperimentalFoundationApi::class)
-    @Composable
-    private fun Kiosk() = AppTheme {
-        // fewer apps, bigger icons, within normal launcher sizes: app icons are drawn for about 48dp and blur when stretched far past it
-        val icon = (96f / kotlin.math.sqrt(apps.size.coerceAtLeast(1).toFloat())).coerceIn(48f, 72f).dp
-        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).safeDrawingPadding().padding(16.dp)) {
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    DateFormat.getTimeInstance(DateFormat.SHORT).format(now),
-                    Modifier.combinedClickable(onLongClickLabel = getString(R.string.open_monomode), onClick = {}, onLongClick = ::openMonoMode).padding(8.dp),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.displayLarge,
-                )
-                Spacer(Modifier.weight(1f))
-                Text("$batteryLevel%", Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium)
-            }
-            Text(DateFormat.getDateInstance(DateFormat.FULL).format(now), Modifier.padding(horizontal = 8.dp), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium)
-            if (apps.isEmpty()) Text(getString(R.string.no_apps_chosen_open_monomode), Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurface)
-            LazyVerticalGrid(GridCells.Adaptive(icon + 32.dp), Modifier.weight(1f).padding(top = 32.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                items(apps, key = { it.pkg }) { a ->
-                    Column(Modifier.clickable { open(a.pkg) }.padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        // plain tile behind the app's own icon (design A): calm, and hides the white squares of older icons
-                        Box(Modifier.size(icon + 16.dp).clip(RoundedCornerShape(24)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                            Image(a.icon, null, Modifier.size(icon).clip(RoundedCornerShape(22)))
-                        }
-                        Text(a.label, Modifier.padding(top = 6.dp), color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-            }
-            // visible but needs a hold, so a guest does not leave kiosk by accident
-            Text(
-                getString(R.string.hold_for_monomode),
-                Modifier.align(Alignment.CenterHorizontally).combinedClickable(onLongClickLabel = getString(R.string.open_monomode), onClick = {}, onLongClick = ::openMonoMode).padding(12.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelMedium,
-            )
-        }
-    }
 }
 
+
+internal class App(val pkg: String, val label: String, val icon: ImageBitmap)
+
+/** A grid of the chosen apps. The way back to MonoMode is a long press on the clock, so a guest does not stumble out. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun KioskHome(apps: List<App>, now: Date, battery: Int, onOpen: (String) -> Unit, onMonoMode: () -> Unit) = AppTheme {
+    // fewer apps, bigger icons, within normal launcher sizes: app icons are drawn for about 48dp and blur when stretched far past it
+    val icon = (96f / kotlin.math.sqrt(apps.size.coerceAtLeast(1).toFloat())).coerceIn(48f, 72f).dp
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).safeDrawingPadding().padding(16.dp)) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                DateFormat.getTimeInstance(DateFormat.SHORT).format(now),
+                Modifier.combinedClickable(onLongClickLabel = stringResource(R.string.open_monomode), onClick = {}, onLongClick = onMonoMode).padding(8.dp),
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.displayLarge,
+            )
+            Spacer(Modifier.weight(1f))
+            Text("$battery%", Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium)
+        }
+        Text(DateFormat.getDateInstance(DateFormat.FULL).format(now), Modifier.padding(horizontal = 8.dp), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium)
+        if (apps.isEmpty()) Text(stringResource(R.string.no_apps_chosen_open_monomode), Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurface)
+        LazyVerticalGrid(GridCells.Adaptive(icon + 32.dp), Modifier.weight(1f).padding(top = 32.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            items(apps, key = { it.pkg }) { a ->
+                Column(Modifier.clickable { onOpen(a.pkg) }.padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    // plain tile behind the app's own icon (design A): calm, and hides the white squares of older icons
+                    Box(Modifier.size(icon + 16.dp).clip(RoundedCornerShape(24)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                        Image(a.icon, null, Modifier.size(icon).clip(RoundedCornerShape(22)))
+                    }
+                    Text(a.label, Modifier.padding(top = 6.dp), color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+        // visible but needs a hold, so a guest does not leave kiosk by accident
+        Text(
+            stringResource(R.string.hold_for_monomode),
+            Modifier.align(Alignment.CenterHorizontally).combinedClickable(onLongClickLabel = stringResource(R.string.open_monomode), onClick = {}, onLongClick = onMonoMode).padding(12.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelMedium,
+        )
+    }
+}
 
 /** Settings > Appearance; "system" follows the phone's light or dark setting. */
 object Appearance {

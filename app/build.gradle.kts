@@ -46,6 +46,9 @@ dependencies {
     implementation("androidx.compose.material:material-icons-core") // core icons; the few extra ones are in AppIcons.kt
     implementation("androidx.activity:activity-compose:1.12.4")
 
+    androidTestImplementation(platform("androidx.compose:compose-bom:2026.09.00"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest") // the empty activity createComposeRule hosts content in
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation(kotlin("test"))
