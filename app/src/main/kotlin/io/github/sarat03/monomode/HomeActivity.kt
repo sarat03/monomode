@@ -22,6 +22,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -59,6 +60,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -69,7 +71,6 @@ import java.util.Date
 
 /** The home screen while a mode with "Own home screen" is on, styled for that mode. */
 class HomeActivity : ComponentActivity() {
-    private class App(val pkg: String, val label: String, val icon: ImageBitmap)
 
     private var apps by mutableStateOf<List<App>>(emptyList())
     private var mode by mutableStateOf<Profile?>(null)
@@ -77,6 +78,7 @@ class HomeActivity : ComponentActivity() {
     /** Drawn once per app; the screen reloads on every return from an app. shortcut: an updated app keeps its old icon until the home screen restarts. */
     private val icons = HashMap<String, ImageBitmap>()
     private var now by mutableStateOf(Date())
+    private var batteryLevel by mutableStateOf(-1)
     /** Set by a Home press; a single kiosk app opens then, but not when the user comes Back from it. */
     private var homePressed = true
 
@@ -86,8 +88,8 @@ class HomeActivity : ComponentActivity() {
         // a home screen ignores Back; finishing would reveal the phone's usual launcher underneath
         onBackPressedDispatcher.addCallback(this) {}
         setContent {
-            LaunchedEffect(Unit) { while (true) { now = Date(); delay(30_000) } }
-            if (mode == Profile.E_READER) Reader() else Kiosk()
+            LaunchedEffect(Unit) { while (true) { now = Date(); batteryLevel = battery(); delay(30_000) } }
+            if (mode == Profile.E_READER) Reader() else KioskHome(apps, now, batteryLevel, { open(it) }, ::openMonoMode)
         }
         // full screen, after setContent (the window has no decor before it on Android 11): the home screens draw their own clock; a swipe from the top shows the bars briefly
         window.insetsController?.apply {
@@ -105,6 +107,7 @@ class HomeActivity : ComponentActivity() {
         super.onResume()
         val modes = Records.modes(this)
         mode = modes.active
+        batteryLevel = battery()
         val picked = mode?.let { modes.apps(it) }.orEmpty()
         val pm = packageManager
         val all = launcherApps(this)
@@ -140,12 +143,12 @@ class HomeActivity : ComponentActivity() {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(now), color = ink, fontFamily = serif, fontSize = 16.sp)
                 Spacer(Modifier.weight(1f))
-                Text("${battery()}%", color = ink, fontFamily = serif, fontSize = 16.sp)
+                Text("$batteryLevel%", color = ink, fontFamily = serif, fontSize = 16.sp)
             }
             HorizontalDivider(Modifier.padding(vertical = 8.dp), color = ink)
             Text(DateFormat.getDateInstance(DateFormat.FULL).format(now), color = ink, fontFamily = serif, fontSize = 18.sp)
             Spacer(Modifier.height(40.dp))
-            if (main == null) Text("No reading app found. Install one (ReadEra, KOReader…) or choose it in MonoMode, under E-reader mode.", color = ink, fontFamily = serif, fontSize = 20.sp)
+            if (main == null) Text(getString(R.string.no_reading_app_found_install), color = ink, fontFamily = serif, fontSize = 20.sp)
             else Row(
                 Modifier.fillMaxWidth().border(2.dp, ink).clickable { open(main.pkg) }.padding(20.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically,
@@ -153,7 +156,7 @@ class HomeActivity : ComponentActivity() {
                 // a book outline, like the cover slot on a Kobo or Kindle home screen
                 Box(Modifier.size(56.dp, 80.dp).border(1.5.dp, ink))
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Continue reading", color = ink, fontFamily = serif, fontSize = 22.sp, maxLines = 1)
+                    Text(getString(R.string.continue_reading), color = ink, fontFamily = serif, fontSize = 22.sp, maxLines = 1)
                     Text(main.label, color = ink, fontFamily = serif, fontSize = 18.sp)
                 }
             }
@@ -163,55 +166,57 @@ class HomeActivity : ComponentActivity() {
                 HorizontalDivider(color = Color.Gray)
             }
             Spacer(Modifier.height(32.dp))
-            Text("MonoMode", Modifier.clickable { openMonoMode() }.padding(vertical = 8.dp), color = Color.Gray, fontFamily = serif, fontSize = 14.sp)
-        }
-    }
-
-    /** A grid of the chosen apps. The way back to MonoMode is a long press on the clock, so a guest does not stumble out. */
-    @OptIn(ExperimentalFoundationApi::class)
-    @Composable
-    private fun Kiosk() = AppTheme {
-        // fewer apps, bigger icons, within normal launcher sizes: app icons are drawn for about 48dp and blur when stretched far past it
-        val icon = (96f / kotlin.math.sqrt(apps.size.coerceAtLeast(1).toFloat())).coerceIn(48f, 72f).dp
-        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).safeDrawingPadding().padding(16.dp)) {
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    DateFormat.getTimeInstance(DateFormat.SHORT).format(now),
-                    Modifier.combinedClickable(onClick = {}, onLongClick = ::openMonoMode).padding(8.dp),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    style = MaterialTheme.typography.displayLarge,
-                )
-                Spacer(Modifier.weight(1f))
-                Text("${battery()}%", Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium)
-            }
-            Text(DateFormat.getDateInstance(DateFormat.FULL).format(now), Modifier.padding(horizontal = 8.dp), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium)
-            if (apps.isEmpty()) Text("No apps chosen. Open MonoMode from the bottom of the screen and choose them under Kiosk mode.", Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurface)
-            LazyVerticalGrid(GridCells.Adaptive(icon + 32.dp), Modifier.weight(1f).padding(top = 32.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                items(apps, key = { it.pkg }) { a ->
-                    Column(Modifier.clickable { open(a.pkg) }.padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        // plain tile behind the app's own icon (design A): calm, and hides the white squares of older icons
-                        Box(Modifier.size(icon + 16.dp).clip(RoundedCornerShape(24)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                            Image(a.icon, a.label, Modifier.size(icon).clip(RoundedCornerShape(22)))
-                        }
-                        Text(a.label, Modifier.padding(top = 6.dp), color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-            }
-            // visible but needs a hold, so a guest does not leave kiosk by accident
-            Text(
-                "Hold for MonoMode",
-                Modifier.align(Alignment.CenterHorizontally).combinedClickable(onClick = {}, onLongClick = ::openMonoMode).padding(12.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelMedium,
-            )
+            Text(getString(R.string.monomode), Modifier.heightIn(min = 48.dp).clickable { openMonoMode() }.padding(vertical = 14.dp), color = ink.copy(alpha = 0.7f), fontFamily = serif, fontSize = 14.sp)
         }
     }
 }
 
 
+internal class App(val pkg: String, val label: String, val icon: ImageBitmap)
+
+/** A grid of the chosen apps. The way back to MonoMode is a long press on the clock, so a guest does not stumble out. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun KioskHome(apps: List<App>, now: Date, battery: Int, onOpen: (String) -> Unit, onMonoMode: () -> Unit) = AppTheme {
+    // fewer apps, bigger icons, within normal launcher sizes: app icons are drawn for about 48dp and blur when stretched far past it
+    val icon = (96f / kotlin.math.sqrt(apps.size.coerceAtLeast(1).toFloat())).coerceIn(48f, 72f).dp
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).safeDrawingPadding().padding(16.dp)) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                DateFormat.getTimeInstance(DateFormat.SHORT).format(now),
+                Modifier.combinedClickable(onLongClickLabel = stringResource(R.string.open_monomode), onClick = {}, onLongClick = onMonoMode).padding(8.dp),
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.displayLarge,
+            )
+            Spacer(Modifier.weight(1f))
+            Text("$battery%", Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium)
+        }
+        Text(DateFormat.getDateInstance(DateFormat.FULL).format(now), Modifier.padding(horizontal = 8.dp), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium)
+        if (apps.isEmpty()) Text(stringResource(R.string.no_apps_chosen_open_monomode), Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurface)
+        LazyVerticalGrid(GridCells.Adaptive(icon + 32.dp), Modifier.weight(1f).padding(top = 32.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            items(apps, key = { it.pkg }) { a ->
+                Column(Modifier.clickable { onOpen(a.pkg) }.padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    // plain tile behind the app's own icon (design A): calm, and hides the white squares of older icons
+                    Box(Modifier.size(icon + 16.dp).clip(RoundedCornerShape(24)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                        Image(a.icon, null, Modifier.size(icon).clip(RoundedCornerShape(22)))
+                    }
+                    Text(a.label, Modifier.padding(top = 6.dp), color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+        // visible but needs a hold, so a guest does not leave kiosk by accident
+        Text(
+            stringResource(R.string.hold_for_monomode),
+            Modifier.align(Alignment.CenterHorizontally).combinedClickable(onLongClickLabel = stringResource(R.string.open_monomode), onClick = {}, onLongClick = onMonoMode).padding(12.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelMedium,
+        )
+    }
+}
+
 /** Settings > Appearance; "system" follows the phone's light or dark setting. */
 object Appearance {
-    val options = listOf("system" to "Follow the phone", "light" to "Light", "dark" to "Dark")
+    val options = listOf("system" to R.string.appearance_system, "light" to R.string.appearance_light, "dark" to R.string.appearance_dark)
     var mode by mutableStateOf("system")
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("appearance", Context.MODE_PRIVATE)
     fun load(ctx: Context) { mode = prefs(ctx).getString("mode", "system")!! }
@@ -230,12 +235,14 @@ fun AppTheme(content: @Composable () -> Unit) = MaterialTheme(
         background = Color(0xFF0E1513), surface = Color(0xFF0E1513), onSurface = Color(0xFFDDE4E1),
         surfaceVariant = Color(0xFF3F4946), onSurfaceVariant = Color(0xFFBEC9C5), outline = Color(0xFF899390), outlineVariant = Color(0xFF3F4946),
         surfaceContainerLowest = Color(0xFF1A211F), surfaceContainer = Color(0xFF1A211F),
+        surfaceContainerLow = Color(0xFF171D1B), surfaceContainerHigh = Color(0xFF252B2A), surfaceContainerHighest = Color(0xFF303634),
     ) else lightColorScheme(
         primary = Color(0xFF00695F), onPrimary = Color.White, primaryContainer = Color(0xFFCCE8E3), onPrimaryContainer = Color(0xFF00201C),
         secondaryContainer = Color(0xFFCCE8E3), onSecondaryContainer = Color(0xFF00201C),
         background = Color(0xFFF5FBF8), surface = Color(0xFFF5FBF8), onSurface = Color(0xFF171D1B),
         surfaceVariant = Color(0xFFE3EAE7), onSurfaceVariant = Color(0xFF3F4946), outline = Color(0xFF6F7976), outlineVariant = Color(0xFFDDE4E1),
         surfaceContainerLowest = Color.White, surfaceContainer = Color(0xFFE9EFEC),
+        surfaceContainerLow = Color(0xFFEFF5F2), surfaceContainerHigh = Color(0xFFE3EAE7), surfaceContainerHighest = Color(0xFFDDE4E1),
     ),
     shapes = Shapes(medium = RoundedCornerShape(16.dp), large = RoundedCornerShape(28.dp)),
     content = content,

@@ -67,6 +67,27 @@ class PhoneTest {
         assertFalse(phone.state.retryShown)
     }
 
+    @Test fun `leaving the app switches Wireless debugging off, after a running change finishes`() {
+        val jobs = ArrayDeque<() -> Unit>()
+        val later = Phone(open = { link }, debloat = Debloat(File(dir, "debloat.txt")), modes = Modes(dir, ModesTest.MapStore()), wirelessOn = { wireless }, background = { jobs += it })
+        later.refresh(paired = true)
+        jobs.removeFirst()()
+        later.check()
+        later.finishQuietly()
+        assertFalse(link.finished)
+        jobs.removeFirst()()
+        assertTrue(link.finished)
+        assertFalse(later.state.connected)
+        assertNull(later.state.busy)
+    }
+
+    @Test fun `leaving the app when idle switches Wireless debugging off`() {
+        phone.refresh(paired = true)
+        phone.finishQuietly()
+        assertTrue(link.finished)
+        assertFalse(phone.state.connected)
+    }
+
     @Test fun `a dropped connection ends the session and says how to recover`() {
         phone.refresh(paired = true)
         link.checkFails = SocketException("reset")

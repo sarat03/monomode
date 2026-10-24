@@ -27,6 +27,8 @@ class TlsPairingTransport private constructor(private val socket: SSLSocket) : P
         fun connect(host: InetAddress, port: Int, clientKey: KeyStore.PrivateKeyEntry): TlsPairingTransport {
             val ctx = SSLContext.getInstance("TLSv1.3", provider).apply { init(arrayOf(FixedKeyManager(clientKey)), arrayOf(TrustAll), null) }
             val socket = (ctx.socketFactory.createSocket(host, port) as SSLSocket).apply {
+                // a stalled pairing dialog must not hang the notification's receiver past Android's broadcast limit
+                soTimeout = 15_000
                 enabledProtocols = arrayOf("TLSv1.3")
                 startHandshake()
             }
