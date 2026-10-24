@@ -19,6 +19,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -136,7 +138,9 @@ class HomeActivity : ComponentActivity() {
         val paper = if (dark) Color.Black else Color.White
         val serif = FontFamily.Serif
         val main = reader
-        Column(Modifier.fillMaxSize().background(paper).safeDrawingPadding().padding(24.dp).verticalScroll(rememberScrollState())) {
+        Column(Modifier.fillMaxSize().background(paper).safeDrawingPadding().padding(24.dp)
+            // a book-width column on tablets, centred on the paper
+            .wrapContentWidth().widthIn(max = 640.dp).verticalScroll(rememberScrollState())) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(now), color = ink, fontFamily = serif, fontSize = 16.sp)
                 Spacer(Modifier.weight(1f))

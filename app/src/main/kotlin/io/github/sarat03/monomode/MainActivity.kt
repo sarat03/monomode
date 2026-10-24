@@ -55,6 +55,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
@@ -197,7 +198,7 @@ class MainActivity : ComponentActivity() {
     private fun rail() = ps.connected && currentWindowAdaptiveInfo().windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
 
     @Composable
-    private fun PairScreen() = Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    private fun PairScreen() = Column(Modifier.widthIn(max = 600.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         AppHeader()
         Text("Set up once", style = MaterialTheme.typography.headlineSmall)
         Text("Pair once over Wireless debugging. After that MonoMode connects by itself.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -217,7 +218,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun StartScreen() = Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    private fun StartScreen() = Column(Modifier.widthIn(max = 600.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         AppHeader()
         Hero(
             neutralTone(), if (ps.wirelessOn) Icons.Outlined.CheckCircle else Icons.Outlined.Info,
@@ -276,7 +277,7 @@ class MainActivity : ComponentActivity() {
     /** A page: back arrow and title on top, content scrolling, an optional action bar pinned at the bottom; Android's Back does [back]. */
     @Composable
     private fun Paged(title: String, back: () -> Unit = { tab = Page.HOME }, bottom: (@Composable () -> Unit)? = null, content: @Composable () -> Unit) =
-        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.widthIn(max = 840.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             BackHandler(onBack = back)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // a mode page sits under Home, so it keeps its arrow next to the rail
