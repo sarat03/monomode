@@ -94,6 +94,8 @@ class HomeActivity : ComponentActivity() {
         // full screen, after setContent (the window has no decor before it on Android 11): the home screens draw their own clock; a swipe from the top shows the bars briefly
         window.insetsController?.apply {
             hide(WindowInsets.Type.statusBars())
+            // a tablet's taskbar is its navigation bar and shows every app; phones keep their gesture bar
+            if (resources.configuration.smallestScreenWidthDp >= 600) hide(WindowInsets.Type.navigationBars())
             systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
     }
