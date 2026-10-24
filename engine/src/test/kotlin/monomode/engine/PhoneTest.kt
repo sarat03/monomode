@@ -110,4 +110,19 @@ class PhoneTest {
         assertNull(phone.state.activeMode)
         assertNull(phone.state.busy)
     }
+
+    @Test fun `the app list stays after removing and restoring, refreshed without a new Show apps`() {
+        val pm = EngineTest.FakeShell(listOf("com.a", "com.b"), system = setOf("com.a"))
+        val p = Phone(
+            open = { object : Link { override val shell = pm; override fun check() = emptyList<Finding>(); override fun finish() = true; override fun close() {} } },
+            debloat = Debloat(File(dir, "d2.txt")), modes = Modes(dir, ModesTest.MapStore()), wirelessOn = { true }, background = { it() },
+        )
+        p.refresh(paired = true)
+        p.scan(emptyList(), "self")
+        p.remove(listOf("com.a"), Method.REMOVE)
+        assertNotNull(p.state.scan)
+        assertFalse("com.a" in p.state.scan!!.others)
+        p.restore(setOf("com.a"))
+        assertTrue("com.a" in p.state.scan!!.others)
+    }
 }

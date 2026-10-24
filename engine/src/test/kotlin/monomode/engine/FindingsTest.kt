@@ -56,7 +56,7 @@ class FindingsTest {
         val access = AccessReport(emptyList(), emptyList(), emptyList(), setOf("com.google.android.gsf", "com.google.android.gms"))
         val f = findings(net, access.copy(notificationAccess = listOf("com.google.android.gms")), nothing, 0)
         assertEquals(listOf("com.chat.app is talking to the internet"), f.filterNot { it.system }.map { it.title })
-        assertEquals(setOf("com.google.android.gms can read all your notifications", "com.google.android.gsf,com.google.android.gms is talking to the internet", "system(uid 1000) is talking to the internet"), f.filter { it.system }.map { it.title }.toSet())
+        assertEquals(setOf("com.google.android.gms can read all your notifications", "com.google.android.gsf, com.google.android.gms is talking to the internet", "system(uid 1000) is talking to the internet"), f.filter { it.system }.map { it.title }.toSet())
     }
 
     @Test fun `an app group sharing one user id is shortened`() {
@@ -65,5 +65,11 @@ class FindingsTest {
         val f = findings(net, noAccess, nothing, 0).first()
         assertEquals("com.vendor.part1 and 39 more apps is talking to the internet", f.title)
         assertEquals(40, f.apps.size) // the screen lists them all in a pop-up
+    }
+
+    @Test fun `titles use app names when a label is given`() {
+        val net = NetworkReport(emptyList(), emptyList(), listOf(sock(4000, 10100, "com.chat.app", "1.2.3.4:443", "01")), false)
+        val f = findings(net, noAccess, nothing, 0) { if (it == "com.chat.app") "Chat" else it }
+        assertEquals("Chat is talking to the internet", f.first().title)
     }
 }

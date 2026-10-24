@@ -17,11 +17,12 @@ data class Finding(val level: Level, val title: String, val detail: String, val 
  * hacked or safe, because a check like this cannot know either.
  * [ownAdbPort] is the Wireless debugging port of this very check, which MonoMode switches off afterwards.
  */
-fun findings(net: NetworkReport, access: AccessReport, dev: DeviceFacts, ownAdbPort: Int): List<Finding> {
+fun findings(net: NetworkReport, access: AccessReport, dev: DeviceFacts, ownAdbPort: Int, label: (String) -> String = { it }): List<Finding> {
+    // [label]: package name to app name; the engine has no PackageManager
     // built-in apps: Play services, keyboard, launcher, system uids
     fun builtIn(app: String) = app.startsWith("system(") || app.split(",").all { it in access.system }
     // apps sharing one user id (Android system, vendor services) come joined by commas; keep titles readable
-    fun name(app: String) = app.split(",").let { if (it.size > 3) "${it[0]} and ${it.size - 1} more apps" else app }
+    fun name(app: String) = app.split(",").map(label).let { if (it.size > 3) "${it[0]} and ${it.size - 1} more apps" else it.joinToString() }
     val out = mutableListOf<Finding>()
     fun look(title: String, detail: String, pkg: String? = null) { out += Finding(Level.LOOK, title, detail, pkg != null && builtIn(pkg), pkg?.split(",").orEmpty()) }
 
@@ -32,15 +33,15 @@ fun findings(net: NetworkReport, access: AccessReport, dev: DeviceFacts, ownAdbP
             look("${name(s.app)} accepts connections", "It listens on port ${s.port}, so devices on the same network can connect to it.", s.app)
     }
     for (s in net.inbound.filter { it.port != ownAdbPort })
-        look("Something is connected to ${s.app}", "${s.remote} is connected to it right now.")
+        look("Something is connected to ${name(s.app)}", "${s.remote} is connected to it right now.")
     for (pkg in access.accessibility)
-        look("$pkg can see and control your screen", "It has accessibility access: it can read what is on screen and tap for you. Fine for tools you chose; remove it in Settings > Accessibility if you did not.", pkg)
+        look("${name(pkg)} can see and control your screen", "It has accessibility access: it can read what is on screen and tap for you. Fine for tools you chose; remove it in Settings > Accessibility if you did not.", pkg)
     for (pkg in access.notificationAccess)
-        look("$pkg can read all your notifications", "Including message previews and login codes. Manage in Settings > Notifications > Device & app notifications.", pkg)
+        look("${name(pkg)} can read all your notifications", "Including message previews and login codes. Manage in Settings > Notifications > Device & app notifications.", pkg)
     for ((pkg, installer) in access.outsidePlayStore)
-        look("$pkg did not come from the Play Store", if (installer == null) "It was installed from a file or an unknown source." else "It was installed by $installer.")
+        look("${name(pkg)} did not come from the Play Store", if (installer == null) "It was installed from a file or an unknown source." else "It was installed by ${name(installer)}.")
     for (pkg in dev.deviceAdmins)
-        look("$pkg is a device admin", "It can lock the phone or erase it. Manage in Settings > Security > Device admin apps.", pkg)
+        look("${name(pkg)} is a device admin", "It can lock the phone or erase it. Manage in Settings > Security > Device admin apps.", pkg)
     for (subject in dev.userCertificates)
         look("A certificate you or an app added is trusted", "$subject. A certificate like this can let its owner read encrypted traffic. Manage in Settings > Security > Encryption & credentials.")
     if (dev.vpnActive)

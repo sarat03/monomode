@@ -116,7 +116,7 @@ class MainActivity : ComponentActivity() {
         val restorePick = mutableStateListOf<String>()
         /** The mode whose page is open under Modes; null shows the list of modes. */
         var openMode by mutableStateOf<Profile?>(null)
-        /** Unused apps' chip: 0 apps, 1 background services, 2 removed (restore). */
+        /** App cleaner's chip: 0 apps, 1 background services, 2 removed (restore). */
         var cleanFilter by mutableStateOf(0)
     }
 
@@ -239,8 +239,8 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun SessionScreen() = when (tab) {
-        Page.CHECK -> Paged("Safety check") { CheckTab() }
-        Page.CLEAN -> Paged("Unused apps", bottom = cleanupBar()) { CleanupTab() }
+        Page.CHECK -> Paged("Network & access") { CheckTab() }
+        Page.CLEAN -> Paged("App cleaner", bottom = cleanupBar()) { CleanupTab() }
         Page.MODES -> openMode?.let { p -> Paged(p.label, back = { openMode = null }) { ModePage(p) } } ?: Paged("Modes") { ModesTab() }
         else -> Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) { HomeTab() }
     }
@@ -312,34 +312,31 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** One answer first, then a row per area with its state; the way to finish stays in sight. */
+    /** Modes first, one tile each with its state; the tools sit below, smaller. */
     @Composable
     private fun HomeTab() {
         val r = ps.results
         val look = r?.count { it.level == Level.LOOK && !it.system } ?: 0
-        val tone = when { r == null -> Tone(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant); look == 0 -> safeTone(); else -> warnTone() }
-        val (bg, fg) = tone.bg to tone.fg
+        val on = ps.activeMode
         AppHeader()
-        // the one answer, big, with its one action (redesign hero card)
-        Card(colors = CardDefaults.cardColors(bg, fg), shape = MaterialTheme.shapes.large, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Icon(if (r != null && look == 0) Icons.Outlined.CheckCircle else Icons.Outlined.Info, null, Modifier.size(32.dp))
-                Text(
-                    when { r == null -> "Not checked yet"; look == 0 -> "Looks safe"; else -> "$look thing${if (look == 1) "" else "s"} to look at" },
-                    Modifier.semantics { heading() },
-                    style = MaterialTheme.typography.headlineMedium,
-                )
-                Text(if (r == null) "See what can reach this phone." else "Checked just now. Nothing was changed.", style = MaterialTheme.typography.bodyLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button((ph::check), enabled = ps.busy == null,
-                        colors = ButtonDefaults.buttonColors(fg, bg)) { Text(if (r == null) "Check" else "Check again") }
-                    if (r != null) TextButton({ tab = Page.CHECK }) { Text("See details", color = fg) }
+        Section("Modes")
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            for (p in Profile.entries) {
+                val t = if (p == on) Tone(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer) else neutralTone()
+                Card(colors = CardDefaults.cardColors(t.bg, t.fg), shape = MaterialTheme.shapes.large,
+                    modifier = Modifier.weight(1f).clickable { openMode = p; tab = Page.MODES }) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Icon(p.icon, null, Modifier.size(28.dp))
+                        Text(if (p == on) "On" else "Off", style = MaterialTheme.typography.headlineMedium)
+                        Text(p.label, style = MaterialTheme.typography.titleMedium)
+                        Text(p.what, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
         }
-        HomeRow(AppIcons.Shield, "Safety check", if (r == null) "Not run yet" else if (look == 0) "Nothing to look at" else "$look to look at") { tab = Page.CHECK }
-        HomeRow(AppIcons.Broom, "Unused apps", if (ps.removed.isEmpty()) "Nothing removed" else "${ps.removed.size} removed or disabled") { tab = Page.CLEAN }
-        HomeRow(AppIcons.Toggle, "Modes", ps.activeMode?.let { "${it.label} is on" } ?: "None on") { tab = Page.MODES }
+        Section("Tools")
+        HomeRow(AppIcons.Shield, "Network & access", if (r == null) "See which apps use the internet" else if (look == 0) "Nothing to look at" else "$look to look at") { tab = Page.CHECK }
+        HomeRow(AppIcons.Broom, "App cleaner", if (ps.removed.isEmpty()) "Remove bloatware and unused apps" else "${ps.removed.size} removed or disabled") { tab = Page.CLEAN }
         val w = warnTone()
         Card(colors = CardDefaults.cardColors(w.bg, w.fg), modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

@@ -85,9 +85,15 @@ class Phone(
 
     /** Lists what can be removed: the curated [entries] and every other app but [self]. */
     fun scan(entries: List<Entry>, self: String) = withLink("Reading the app list…") { l ->
+        this.self = self
         val s = debloat.scan(l.shell, entries, self)
         update { copy(scan = s, entries = entries) }
     }
+    private var self = ""
+
+    // re-read the list over the same connection so the App cleaner never asks for "Show apps" again
+    private fun rescan(l: Link) =
+        state.scan?.let { runCatching { debloat.scan(l.shell, state.entries, self) }.getOrNull() }
 
     /** Removes in checked batches; a batch that breaks Home, calls or the keyboard is undone and reported. */
     fun remove(pkgs: List<String>, method: Method) = withLink("Working in small batches, checking the phone after each…") { l ->
@@ -101,13 +107,15 @@ class Phone(
             update { copy(message = "Stopped and undid the last batch: ${e.message}. If the phone refused to disable an app, try Uninstall.") }
         } finally {
             if (debloat.record.exists()) runCatching { saveCopy(debloat.record) }
-            update { copy(removed = debloat.removed, scan = null) }
+            val s = rescan(l)
+            update { copy(removed = debloat.removed, scan = s) }
         }
     }
 
     fun restore(pkgs: Set<String>) = withLink("Restoring…") { l ->
         debloat.restore(l.shell, pkgs)
-        update { copy(removed = debloat.removed, scan = null) }
+        val s = rescan(l)
+        update { copy(removed = debloat.removed, scan = s) }
     }
 
     fun turnOn(p: Profile) = withLink("Turning on ${p.label} mode…") { l -> modes.turnOn(l.shell, p); update { copy(activeMode = modes.active) } }

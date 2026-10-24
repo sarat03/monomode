@@ -6,8 +6,8 @@ It talks to the phone's own `adbd` over **Wireless debugging** (Android 11+), so
 
 ## What it does
 
-- **Safety check**: what can reach the phone (open network ports, apps with accessibility, notification or device-admin access, user certificates, VPN, apps from outside the Play Store). Read-only.
-- **Unused apps**: uninstall or disable apps you don't use, in small batches. After each batch it checks that Home, calls and the keyboard still work, and undoes the batch if not. Every removal can be restored, and a copy of the restore list is saved in `Downloads/MonoMode`.
+- **Network & access**: which apps use the internet and what can reach the phone (open network ports, apps with accessibility, notification or device-admin access, user certificates, VPN, apps from outside the Play Store). Read-only.
+- **App cleaner**: uninstall bloatware or or disable apps you don't use, in small batches. After each batch it checks that Home, calls and the keyboard still work, and undoes the batch if not. Every removal can be restored, and a copy of the restore list is saved in `Downloads/MonoMode`.
 - **Modes**: one switch changes a few settings for one job, and turning it off puts your own settings back exactly as they were.
   - **Kiosk**: a home screen with only the apps you choose, or one app pinned (PIN to unpin).
   - **E-reader**: grey screen, no animations, Do not disturb, battery saver, and a paper-like home screen that opens your reading app.

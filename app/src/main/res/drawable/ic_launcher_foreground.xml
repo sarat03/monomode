@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- MonoMode: a phone outline holding one dot (one phone, one mode), inside the 66dp safe zone of the 108dp adaptive icon -->
+<!-- MonoMode: a phone outline holding one dot (one phone, one mode), well inside the 66dp circle safe zone (furthest point ~26dp from centre), so every mask shape keeps it whole of the 108dp adaptive icon -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <path android:strokeColor="#FFFFFF" android:strokeWidth="5"
-        android:pathData="M45,24 L63,24 A9,9 0 0 1 72,33 L72,75 A9,9 0 0 1 63,84 L45,84 A9,9 0 0 1 36,75 L36,33 A9,9 0 0 1 45,24 Z" />
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="4"
+        android:pathData="M47,32 L61,32 A7,7 0 0 1 68,39 L68,69 A7,7 0 0 1 61,76 L47,76 A7,7 0 0 1 40,69 L40,39 A7,7 0 0 1 47,32 Z" />
     <path android:fillColor="#FFFFFF"
-        android:pathData="M54,46 A8,8 0 1 1 54,62 A8,8 0 1 1 54,46 Z" />
+        android:pathData="M54,48 A6,6 0 1 1 54,60 A6,6 0 1 1 54,48 Z" />
 </vector>
