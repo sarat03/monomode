@@ -67,7 +67,9 @@ private fun Shell.read(c: Change): String =
 
 private fun Shell.write(c: Change, value: String) {
     when {
-        c.ns == HOME -> run(listOf("cmd", "package", "set-home-activity", value))
+        // no default home before (the chooser was read): Android cannot set the chooser back, so leave it
+        // shortcut: the mode's home screen stays default on such phones, clear it in Settings if that shows up
+        c.ns == HOME -> if (!value.endsWith("ResolverActivity")) run(listOf("cmd", "package", "set-home-activity", value))
         c.ns == DND -> run(listOf("cmd", "notification", "set_dnd", value)) // writing zen_mode directly is ignored
         // was unset before; Android 11 exits 1 when the key is already gone, which is the state we want
         value == "null" -> runCatching { run(listOf("settings", "delete", c.ns, c.key)) }
