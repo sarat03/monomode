@@ -43,6 +43,7 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.runtime.key
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.window.core.layout.WindowSizeClass
@@ -255,9 +256,19 @@ class MainActivity : ComponentActivity() {
     private fun SessionScreen() = when (tab) {
         Page.CHECK -> Paged("Network & access") { CheckTab() }
         Page.CLEAN -> Paged("App cleaner", bottom = cleanupBar()) { CleanupTab() }
-        Page.MODES -> openMode?.let { p -> Paged(p.label, back = { openMode = null; tab = Page.HOME }) { ModePage(p) } } ?: HomeScroll()
-        else -> HomeScroll()
+        else -> if (twoPane()) Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+            Box(Modifier.weight(1f)) { HomeScroll() }
+            Box(Modifier.weight(1f)) { openMode?.let { ModePaged(it) } ?: Text("Choose a mode to set it up.", Modifier.padding(top = 72.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        } else openMode?.takeIf { tab == Page.MODES }?.let { ModePaged(it) } ?: HomeScroll()
     }
+
+    // keyed so switching modes in the side pane doesn't carry one mode's picks into the other
+    @Composable
+    private fun ModePaged(p: Profile) = key(p) { Paged(p.label, back = { openMode = null; tab = Page.HOME }) { ModePage(p) } }
+
+    /** Wide tablet with the rail: Home's modes on the left, the open mode's page on the right. */
+    @Composable
+    private fun twoPane() = rail() && currentWindowAdaptiveInfo().windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND)
 
     @Composable
     private fun HomeScroll() = Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) { HomeTab() }
