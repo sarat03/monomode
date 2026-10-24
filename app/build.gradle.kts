@@ -43,6 +43,7 @@ dependencies {
 
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material3:material3-adaptive-navigation-suite") // rail on tablets
     implementation("androidx.compose.material:material-icons-core") // core icons; the few extra ones are in AppIcons.kt
     implementation("androidx.activity:activity-compose:1.12.4")
 
