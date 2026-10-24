@@ -82,6 +82,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import kotlin.concurrent.thread
 import monomode.engine.Entry
@@ -224,7 +225,10 @@ class MainActivity : ComponentActivity() {
 
     /** App name on the left, settings gear on the right. */
     @Composable
-    private fun AppHeader() = Row(verticalAlignment = Alignment.CenterVertically) {
+    private fun AppHeader() = Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
+            Icon(painterResource(R.drawable.ic_launcher_monochrome), null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onPrimary)
+        }
         Text("MonoMode", Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.headlineMedium)
         IconButton({ tab = Page.SETTINGS }) { Icon(Icons.Outlined.Settings, "Settings") }
     }
@@ -378,7 +382,7 @@ class MainActivity : ComponentActivity() {
         val (system, own) = (r ?: return).sortedBy { it.level }.partition { it.system }
         val (needs, fine) = own.partition { it.level == Level.LOOK }
         if (needs.isNotEmpty()) { Section("Needs a look"); needs.forEach { FindingCard(it) } }
-        if (fine.isNotEmpty()) { Section("For your information"); fine.forEach { FindingCard(it) } }
+        if (fine.isNotEmpty()) { Section("Using the internet"); fine.forEach { FindingCard(it) } }
         if (system.isNotEmpty()) {
             var open by remember { mutableStateOf(false) }
             ListRow("Built-in apps", "${system.size} found, usually how Android works") { open = true }
@@ -398,6 +402,7 @@ class MainActivity : ComponentActivity() {
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (f.apps.size == 1) AppIcon(f.apps.first())
                     if (f.level == Level.LOOK && !f.system) Icon(Icons.Outlined.Warning, null, Modifier.size(20.dp), tint = warnTone().fg)
                     Text(f.title, style = MaterialTheme.typography.titleMedium)
                 }
@@ -437,9 +442,10 @@ class MainActivity : ComponentActivity() {
                 // Uninstall only for built-in apps: their apk stays on the phone so Restore works; a Play Store app's is deleted
                 val playApps = selected.filterNot { it in ps.scan!!.system }
                 if (playApps.isNotEmpty()) Text("${playApps.joinToString { label(it) }} came from the Play Store. MonoMode can only disable these; to uninstall one, use the Play Store, where you can reinstall it later.", style = MaterialTheme.typography.bodySmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton({ ph.remove(selected.toList(), Method.DISABLE); selected.clear() }, Modifier.weight(1f).heightIn(min = 48.dp), enabled = ps.busy == null && selected.isNotEmpty()) { Text("Disable ${selected.size}") }
-                    Button({ ph.remove(selected.toList(), Method.REMOVE); selected.clear() }, Modifier.weight(1f).heightIn(min = 48.dp), enabled = ps.busy == null && selected.isNotEmpty() && playApps.isEmpty()) { Text("Uninstall ${selected.size}") }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("${selected.size} selected", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedButton({ ph.remove(selected.toList(), Method.DISABLE); selected.clear() }, Modifier.heightIn(min = 48.dp), enabled = ps.busy == null && selected.isNotEmpty()) { Text("Disable") }
+                    Button({ ph.remove(selected.toList(), Method.REMOVE); selected.clear() }, Modifier.heightIn(min = 48.dp), enabled = ps.busy == null && selected.isNotEmpty() && playApps.isEmpty()) { Text("Uninstall") }
                 }
             }
         }
@@ -447,7 +453,7 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun CleanupTab() {
-        Text("Remove apps you don't use. You can bring them back.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Remove bloatware and system apps you don't use. Every removal can be restored.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(cleanFilter == 0, { cleanFilter = 0 }, { Text("Apps") })
             FilterChip(cleanFilter == 1, { cleanFilter = 1 }, { Text("Background") }, enabled = ps.scan != null)
