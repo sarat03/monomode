@@ -31,7 +31,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -40,7 +39,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Icon
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.foundation.BorderStroke
@@ -48,7 +46,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.WindowInsets
@@ -68,8 +65,6 @@ import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.RadioButton
@@ -84,13 +79,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import kotlin.concurrent.thread
-import monomode.engine.Entry
 import monomode.engine.Finding
-import monomode.engine.HealthException
 import monomode.engine.Level
 import monomode.engine.Method
-import monomode.engine.Plan
 import monomode.engine.Profile
 import monomode.engine.Risk
 import monomode.engine.parseList
@@ -142,7 +133,8 @@ class MainActivity : ComponentActivity() {
         openPage(intent)
     }
 
-    private fun openPage(i: Intent?) { i?.getIntExtra(Page.EXTRA, -1)?.takeIf { it >= 0 }?.let { tab = it } }
+    // from a mode home screen: open the mode that is on, or Home when none is
+    private fun openPage(i: Intent?) { i?.getIntExtra(Page.EXTRA, -1)?.takeIf { it >= 0 }?.let { tab = it; if (it == Page.MODES) openMode = modes.active } }
 
     override fun onResume() {
         super.onResume()
@@ -245,9 +237,12 @@ class MainActivity : ComponentActivity() {
     private fun SessionScreen() = when (tab) {
         Page.CHECK -> Paged("Network & access") { CheckTab() }
         Page.CLEAN -> Paged("App cleaner", bottom = cleanupBar()) { CleanupTab() }
-        Page.MODES -> openMode?.let { p -> Paged(p.label, back = { openMode = null; tab = Page.HOME }) { ModePage(p) } } ?: Paged("Modes") { ModesTab() }
-        else -> Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) { HomeTab() }
+        Page.MODES -> openMode?.let { p -> Paged(p.label, back = { openMode = null; tab = Page.HOME }) { ModePage(p) } } ?: HomeScroll()
+        else -> HomeScroll()
     }
+
+    @Composable
+    private fun HomeScroll() = Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) { HomeTab() }
 
     /** A page: back arrow and title on top, content scrolling, an optional action bar pinned at the bottom; Android's Back does [back]. */
     @Composable
@@ -557,27 +552,6 @@ class MainActivity : ComponentActivity() {
         Profile.E_READER -> "A calm, grey screen for reading."
     }
     private val Profile.icon get() = when (this) { Profile.KIOSK -> AppIcons.Grid; Profile.E_READER -> AppIcons.Book }
-
-    /** One card per mode with its state; a card opens the mode's own page. */
-    @Composable
-    private fun ModesTab() {
-        val on = ps.activeMode
-        Text("One mode at a time. Turning it off restores your settings.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        for (p in Profile.entries) Panel(Modifier.fillMaxWidth().clickable { openMode = p }) {
-            Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Box(Modifier.size(48.dp).clip(MaterialTheme.shapes.medium).background(if (p == on) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                    Icon(p.icon, null, tint = if (p == on) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Column(Modifier.weight(1f)) {
-                    Text(p.label, style = MaterialTheme.typography.titleLarge)
-                    Text(p.what, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (on != null && on != p) Text("Turn off ${on.label} first. One mode at a time.", style = MaterialTheme.typography.bodyMedium, color = warnTone().fg)
-                }
-                if (p == on) Text("On", Modifier.clip(MaterialTheme.shapes.small).background(MaterialTheme.colorScheme.primary).padding(horizontal = 12.dp, vertical = 4.dp),
-                    color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelMedium)
-            }
-        }
-    }
 
     /** A mode's page: its state and switch on top, then what it changes, its apps and, for Kiosk, pinning. */
     @Composable
