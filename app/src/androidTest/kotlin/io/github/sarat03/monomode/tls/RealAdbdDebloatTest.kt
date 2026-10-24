@@ -38,7 +38,7 @@ class RealAdbdDebloatTest {
             val before = state(sh)
             val p = plan(sh, listOf(Entry(pkg, Risk.CAUTION)), maxRisk = Risk.CAUTION)
             assertEquals(listOf(pkg), p.todo)
-            apply(sh, p, record, dryRun = false, method = method)
+            apply(sh, p, record, method = method)
             restore(sh, record)
             assertEquals(before, state(sh))
         }

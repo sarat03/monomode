@@ -62,9 +62,6 @@ class EngineTest {
         assertEquals(listOf("com.android.systemui"), p.refused)
     }
 
-    @Test fun `override allows protected`() =
-        assertEquals(listOf("com.android.systemui"), plan(FakeShell(listOf("com.android.systemui")), listOf(Entry("com.android.systemui", Risk.SAFE)), allowProtected = setOf("com.android.systemui")).todo)
-
     @Test fun `skips missing and already disabled`() {
         val p = plan(FakeShell(listOf("com.a.b"), listOf("com.c.d")), listOf(Entry("com.a.b", Risk.SAFE), Entry("com.c.d", Risk.SAFE), Entry("com.not.here", Risk.SAFE)))
         assertEquals(listOf("com.a.b"), p.todo)
@@ -79,42 +76,35 @@ class EngineTest {
     }
 
     // apply / restore
-    @Test fun `dry run touches nothing`() {
-        val sh = FakeShell(listOf("com.a.b")); val r = rec()
-        apply(sh, plan(sh, listOf(Entry("com.a.b", Risk.SAFE))), r, dryRun = true)
-        assertFalse("com.a.b" in sh.disabled)
-        assertFalse(r.exists())
-    }
-
     @Test fun `apply writes record then restore matches original`() {
         val sh = FakeShell(listOf("com.a.b", "com.c.d", "com.keep.me")); val r = rec()
         val before = sh.enabled.toSet()
-        apply(sh, plan(sh, listOf(Entry("com.a.b", Risk.SAFE), Entry("com.c.d", Risk.SAFE))), r, dryRun = false)
-        assertEquals(listOf("com.a.b", "com.c.d"), readRecord(r))
+        apply(sh, plan(sh, listOf(Entry("com.a.b", Risk.SAFE), Entry("com.c.d", Risk.SAFE))), r)
+        assertEquals(listOf("com.a.b", "com.c.d"), recorded(r).keys.toList())
         restore(sh, r)
         assertEquals(before, sh.enabled) // release gate
     }
 
     @Test fun `record merges across runs`() {
         val sh = FakeShell(listOf("com.a.b", "com.c.d")); val r = rec()
-        apply(sh, plan(sh, listOf(Entry("com.a.b", Risk.SAFE))), r, dryRun = false)
-        apply(sh, plan(sh, listOf(Entry("com.c.d", Risk.SAFE))), r, dryRun = false)
-        assertEquals(listOf("com.a.b", "com.c.d"), readRecord(r))
+        apply(sh, plan(sh, listOf(Entry("com.a.b", Risk.SAFE))), r)
+        apply(sh, plan(sh, listOf(Entry("com.c.d", Risk.SAFE))), r)
+        assertEquals(listOf("com.a.b", "com.c.d"), recorded(r).keys.toList())
     }
 
     @Test fun `auto rollback when home breaks`() {
         val sh = FakeShell(listOf("com.breaks.home", "com.a.b")); val r = rec()
         assertFailsWith<HealthException> {
-            apply(sh, plan(sh, listOf(Entry("com.a.b", Risk.SAFE), Entry("com.breaks.home", Risk.SAFE))), r, dryRun = false, batch = 1)
+            apply(sh, plan(sh, listOf(Entry("com.a.b", Risk.SAFE), Entry("com.breaks.home", Risk.SAFE))), r, batch = 1)
         }
         assertTrue("com.breaks.home" in sh.enabled) // bad batch rolled back
         assertTrue("com.a.b" in sh.disabled)        // good batch kept and recorded
-        assertEquals(listOf("com.a.b"), readRecord(r))
+        assertEquals(listOf("com.a.b"), recorded(r).keys.toList())
     }
 
     @Test fun `only allowlisted commands reach the shell`() {
         val sh = FakeShell(listOf("com.a.b")); val r = rec()
-        apply(sh, plan(sh, listOf(Entry("com.a.b", Risk.SAFE))), r, dryRun = false)
+        apply(sh, plan(sh, listOf(Entry("com.a.b", Risk.SAFE))), r)
         restore(sh, r)
         for (c in sh.calls) assertTrue(c[0] in setOf("pm", "cmd", "settings"), "$c")
     }
@@ -129,7 +119,7 @@ class EngineTest {
     @Test fun `a command failing mid-batch rolls the batch back`() {
         val sh = FakeShell(listOf("com.a.b", "com.vendor.locked")); val r = rec()
         assertFailsWith<java.io.IOException> {
-            apply(sh, plan(sh, listOf(Entry("com.a.b", Risk.SAFE), Entry("com.vendor.locked", Risk.SAFE))), r, dryRun = false)
+            apply(sh, plan(sh, listOf(Entry("com.a.b", Risk.SAFE), Entry("com.vendor.locked", Risk.SAFE))), r)
         }
         assertTrue("com.a.b" in sh.enabled)
         assertFalse(r.exists())
@@ -138,7 +128,7 @@ class EngineTest {
     @Test fun `remove for this user is recorded and restored with install-existing`() {
         val sh = FakeShell(listOf("com.vendor.locked", "com.keep.me")); val r = rec()
         val before = sh.enabled.toSet()
-        apply(sh, plan(sh, listOf(Entry("com.vendor.locked", Risk.CAUTION)), maxRisk = Risk.CAUTION), r, dryRun = false, method = Method.REMOVE)
+        apply(sh, plan(sh, listOf(Entry("com.vendor.locked", Risk.CAUTION)), maxRisk = Risk.CAUTION), r, method = Method.REMOVE)
         assertTrue(listOf("pm", "uninstall", "-k", "--user", "0", "com.vendor.locked") in sh.calls)
         assertEquals(listOf("com.vendor.locked removed"), r.readLines())
         restore(sh, r)
@@ -154,14 +144,6 @@ class EngineTest {
         for (bad in listOf("a b", "a;b", "\$(id)", "`id`", "a|b", "a>b", "a&b", "'a'", "\"a\"", "a\nb", "*", "~", "")) assertFailsWith<IllegalArgumentException>(bad) { commandLine(listOf("echo", bad)) }
     }
 
-    // drift
-    @Test fun `reports re-enabled after update`() {
-        val sh = FakeShell(listOf("com.a.b", "com.c.d")); val r = rec()
-        apply(sh, plan(sh, listOf(Entry("com.a.b", Risk.SAFE), Entry("com.c.d", Risk.SAFE))), r, dryRun = false)
-        sh.disabled -= "com.c.d"; sh.enabled += "com.c.d" // OTA re-enabled it
-        assertEquals(listOf("com.c.d"), drift(sh, r))
-    }
-
     @Test fun `other apps are the enabled ones not in the list and not protected`() {
         val sh = Shell { args ->
             check(args == listOf("pm", "list", "packages", "-e")) { "unexpected $args" }
@@ -174,7 +156,7 @@ class EngineTest {
         // seen on Realme XT: a Play Store app's apk is deleted, so install-existing leaves a broken entry
         val sh = FakeShell(listOf("com.vendor.locked", "com.play.calculator")); val r = rec()
         val e = assertFailsWith<IllegalArgumentException> {
-            apply(sh, Plan(todo = listOf("com.vendor.locked", "com.play.calculator")), r, dryRun = false, method = Method.REMOVE)
+            apply(sh, Plan(todo = listOf("com.vendor.locked", "com.play.calculator")), r, method = Method.REMOVE)
         }
         assertTrue("com.play.calculator" in e.message.orEmpty())
         assertTrue(sh.calls.none { it.take(2) == listOf("pm", "uninstall") })
@@ -183,12 +165,24 @@ class EngineTest {
 
     @Test fun `restore only the picked apps and keep the rest in the record`() {
         val sh = FakeShell(listOf("com.a.b", "com.c.d", "com.vendor.locked")); val r = rec()
-        apply(sh, plan(sh, listOf(Entry("com.a.b", Risk.SAFE), Entry("com.c.d", Risk.SAFE))), r, dryRun = false)
-        apply(sh, Plan(todo = listOf("com.vendor.locked")), r, dryRun = false, method = Method.REMOVE)
+        apply(sh, plan(sh, listOf(Entry("com.a.b", Risk.SAFE), Entry("com.c.d", Risk.SAFE))), r)
+        apply(sh, Plan(todo = listOf("com.vendor.locked")), r, method = Method.REMOVE)
         assertEquals(mapOf("com.a.b" to Method.DISABLE, "com.c.d" to Method.DISABLE, "com.vendor.locked" to Method.REMOVE), recorded(r))
         restore(sh, r, only = setOf("com.c.d", "com.vendor.locked"))
         assertTrue("com.c.d" in sh.enabled && "com.vendor.locked" in sh.enabled)
         assertTrue("com.a.b" in sh.disabled)
         assertEquals(mapOf("com.a.b" to Method.DISABLE), recorded(r))
+    }
+
+    @Test fun `apps changed before the connection drops stay on the Restore list`() {
+        val sh = object : FakeShell(listOf("com.a.b", "com.c.d", "com.e.f")) {
+            var cmds = 0
+            // two apps are disabled, then every command fails, the undo included
+            override fun run(args: List<String>): String = if (++cmds > 2) throw java.net.SocketException("connection lost") else super.run(args)
+        }
+        val r = rec()
+        assertFailsWith<java.net.SocketException> { apply(sh, plan(FakeShell(listOf("com.a.b", "com.c.d", "com.e.f")), listOf(Entry("com.a.b", Risk.SAFE), Entry("com.c.d", Risk.SAFE), Entry("com.e.f", Risk.SAFE))), r) }
+        assertEquals(setOf("com.a.b", "com.c.d"), sh.disabled)
+        assertEquals(listOf("com.a.b", "com.c.d"), recorded(r).keys.toList())
     }
 }

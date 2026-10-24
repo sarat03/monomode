@@ -256,6 +256,10 @@ internal fun android.graphics.drawable.Drawable.toBitmap(px: Int): ImageBitmap {
 }
 
 /** (package, label) of every app with a launcher icon except MonoMode, sorted by label. */
+/** App name, or the package name for apps Android does not let us see. */
+fun appLabel(ctx: Context, pkg: String): String =
+    runCatching { ctx.packageManager.run { getApplicationLabel(getApplicationInfo(pkg, 0)).toString() } }.getOrDefault(pkg)
+
 fun launcherApps(ctx: Context): List<Pair<String, String>> {
     val pm = ctx.packageManager
     return pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)

@@ -3,7 +3,7 @@ package monomode.engine
 import java.io.File
 
 /**
- * Port of core.py: plan, apply, restore, drift.
+ * Port of core.py: plan, apply, restore.
  *
  * Security model: list files and records are data, never commands. Every package name is
  * validated against PKG_RE before it reaches the shell.
@@ -56,13 +56,13 @@ fun parseList(text: String): List<Entry> = text.lines().mapNotNull { raw ->
 private fun Shell.pkgs(vararg flags: String): Set<String> =
     run(listOf("pm", "list", "packages", *flags)).lines().filter { it.startsWith("package:") }.map { it.drop(8).trim() }.toSet()
 
-fun plan(sh: Shell, entries: List<Entry>, maxRisk: Risk = Risk.SAFE, allowProtected: Set<String> = emptySet()): Plan {
+fun plan(sh: Shell, entries: List<Entry>, maxRisk: Risk = Risk.SAFE): Plan {
     val installed = sh.pkgs()
     val disabled = sh.pkgs("-d")
     val todo = mutableListOf<String>(); val already = mutableListOf<String>(); val missing = mutableListOf<String>()
     val refused = mutableListOf<String>(); val tooRisky = mutableListOf<String>()
     for ((pkg, risk) in entries) when {
-        pkg in PROTECTED && pkg !in allowProtected -> refused += pkg
+        pkg in PROTECTED -> refused += pkg
         pkg !in installed -> missing += pkg
         pkg in disabled -> already += pkg
         risk > maxRisk -> tooRisky += pkg
@@ -90,16 +90,15 @@ enum class Method(
     REMOVE({ listOf("pm", "uninstall", "-k", "--user", "0", it) }, { listOf("cmd", "package", "install-existing", it) }, " removed"),
 }
 
-/** Record: one line per package, `pkg` (disabled) or `pkg removed`, sorted. */
-private fun readEntries(record: File): Map<String, Method> =
+/** What MonoMode uninstalled or disabled, and how. Record: one line per package, `pkg` (disabled) or `pkg removed`, sorted. */
+internal fun recorded(record: File): Map<String, Method> =
     if (!record.exists()) emptyMap() else record.readLines().map { it.trim() }.filter { it.isNotEmpty() }.associate { line ->
         line.substringBefore(" ") to if (line.endsWith(Method.REMOVE.tag)) Method.REMOVE else Method.DISABLE
     }
 
-/** Packages we disabled (not removed). */
-internal fun readRecord(record: File): List<String> = readEntries(record).filterValues { it == Method.DISABLE }.keys.toList()
-
+/** Deletes the record once nothing is left in it. */
 private fun writeRecord(record: File, entries: Map<String, Method>) {
+    if (entries.isEmpty()) { record.delete(); return }
     record.parentFile?.mkdirs()
     val tmp = File(record.path + ".tmp")
     tmp.writeText(entries.toSortedMap().entries.joinToString("") { (pkg, m) -> "$pkg${m.tag}\n" })
@@ -110,51 +109,39 @@ private fun writeRecord(record: File, entries: Map<String, Method>) {
  * Disables (or removes for user 0) in small batches; after each, reads state back and checks health.
  * A batch that fails or breaks Home/dialer/keyboard is undone and apply stops.
  */
-fun apply(sh: Shell, p: Plan, record: File, dryRun: Boolean = true, batch: Int = 5, method: Method = Method.DISABLE): Plan {
-    if (dryRun) return p
+fun apply(sh: Shell, p: Plan, record: File, batch: Int = 5, method: Method = Method.DISABLE) {
     if (method == Method.REMOVE) {
         // only a built-in app's apk survives pm uninstall --user 0; a Play Store app's is deleted and cannot be restored
         val notBuiltIn = p.todo - sh.pkgs("-s")
         require(notBuiltIn.isEmpty()) { "only apps built into the phone can be removed and restored; not: ${notBuiltIn.joinToString()}" }
     }
-    val done = readEntries(record).toMutableMap()
+    val done = recorded(record).toMutableMap()
     for (chunk in p.todo.chunked(batch)) {
         try {
-            for (pkg in chunk) sh.run(method.apply(pkg))
+            // recorded as soon as it is applied, so an app the undo cannot reach (connection lost) stays on the Restore list
+            for (pkg in chunk) { sh.run(method.apply(pkg)); done[pkg] = method; writeRecord(record, done) }
             val ok = when (method) {
                 Method.DISABLE -> sh.pkgs("-d").containsAll(chunk)
                 Method.REMOVE -> sh.pkgs().none { it in chunk }
             }
             if (!healthy(sh) || !ok) throw HealthException("batch $chunk failed verification; rolled back")
         } catch (e: Exception) {
-            for (pkg in chunk) runCatching { sh.run(method.undo(pkg)) } // best effort: undo whatever got applied
+            for (pkg in chunk) if (runCatching { sh.run(method.undo(pkg)) }.isSuccess) done -= pkg // best effort: undo whatever got applied
+            writeRecord(record, done)
             throw e
         }
-        for (pkg in chunk) done[pkg] = method
-        writeRecord(record, done) // after every good batch so a crash never loses the record
     }
-    return p
 }
-
-/** What MonoMode uninstalled or disabled, and how, for the restore list. */
-internal fun recorded(record: File): Map<String, Method> = readEntries(record)
 
 /** Brings back [only] (default: everything) and keeps the rest in the record; deletes the record once empty. */
 fun restore(sh: Shell, record: File, only: Set<String>? = null) {
-    val left = readEntries(record).toMutableMap()
+    val left = recorded(record).toMutableMap()
     for ((pkg, method) in left.toMap()) {
         if (only != null && pkg !in only) continue
         if (PKG_RE.matches(pkg)) sh.run(method.undo(pkg))
         left -= pkg
-        if (left.isEmpty()) record.delete() else writeRecord(record, left) // after each app, so a failure keeps the rest
+        writeRecord(record, left) // after each app, so a failure keeps the rest
     }
-}
-
-/** Packages we disabled that are enabled again (usually after an OTA). */
-internal fun drift(sh: Shell, record: File): List<String> {
-    val installed = sh.pkgs()
-    val disabled = sh.pkgs("-d")
-    return readRecord(record).filter { it in installed && it !in disabled }
 }
 
 /** Every enabled app not covered by a list, so the owner can pick any of them; protected apps and [self] are left out. */
@@ -176,7 +163,7 @@ class Debloat(val record: File) {
     /** What is uninstalled or disabled now, and how. */
     val removed: Map<String, Method> get() = recorded(record)
 
-    fun remove(sh: Shell, pkgs: List<String>, method: Method) { apply(sh, Plan(todo = pkgs), record, dryRun = false, method = method) }
+    fun remove(sh: Shell, pkgs: List<String>, method: Method) { apply(sh, Plan(todo = pkgs), record, method = method) }
 
     fun restore(sh: Shell, only: Set<String>) = restore(sh, record, only)
 }

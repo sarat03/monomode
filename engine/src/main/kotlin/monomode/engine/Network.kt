@@ -11,12 +11,10 @@ data class NetworkReport(
     val inbound: List<Socket>,
     /** Connections the phone made. */
     val outbound: List<Socket>,
-    val adbExposed: Boolean,
 )
 
 private const val LISTEN = "0A"
 private const val ESTABLISHED = "01"
-private const val SHELL_UID = 2000
 
 /** Kernel hex `addr:port`; addresses are 32-bit words in host (little-endian) order. */
 private fun addr(hex: String): Pair<InetAddress, Int> {
@@ -55,7 +53,5 @@ fun network(sh: Shell): NetworkReport {
         listening,
         inbound = est.filter { it.port in ports },
         outbound = est.filter { it.port !in ports },
-        // ponytail: 5555 or shell-owned listener; Wireless debugging picks random ports, owned by shell (uid 2000)
-        adbExposed = listening.any { it.port == 5555 || it.uid == SHELL_UID },
     )
 }

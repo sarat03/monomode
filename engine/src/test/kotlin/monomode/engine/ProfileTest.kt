@@ -112,4 +112,16 @@ class ProfileTest {
         assertEquals(start, sh.values)
         assertTrue(!r.exists())
     }
+
+    @Test fun `a connection lost partway keeps the record, so Turn off can still put everything back`() {
+        val fake = FakeSettings(start); val r = rec()
+        var puts = 0
+        // the first write lands, then the connection is gone for every command, the undo included
+        val sh = Shell { a -> if (a.take(2) == listOf("settings", "put") && ++puts > 1 || puts > 1) throw java.net.SocketException("connection lost") else fake.run(a) }
+        assertFailsWith<java.net.SocketException> { applyProfile(sh, Profile.E_READER, r) }
+        assertEquals("1", fake.values["secure accessibility_display_daltonizer_enabled"]) // still changed
+        assertTrue(r.exists())
+        restoreProfile(fake, r) // connection back
+        assertEquals(start, fake.values)
+    }
 }

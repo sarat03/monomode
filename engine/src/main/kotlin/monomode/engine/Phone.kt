@@ -47,7 +47,7 @@ class Phone(
     private val debloat: Debloat,
     private val modes: Modes,
     private val wirelessOn: () -> Boolean,
-    /** Called after each removal with the restore record, to keep a copy outside the app (Downloads). */
+    /** Called after each removal and restore with the restore record (maybe deleted: nothing left), to keep a copy outside the app (Downloads). */
     private val saveCopy: (File) -> Unit = {},
     private val background: (() -> Unit) -> Unit = { work -> thread { work() } },
     private val onChange: (PhoneState) -> Unit = {},
@@ -101,19 +101,18 @@ class Phone(
             debloat.remove(l.shell, pkgs, method)
         } catch (e: HealthException) {
             update { copy(message = "Stopped: Home, phone or keyboard stopped working after a batch, so that batch was undone. Earlier batches stay uninstalled or disabled; Restore lists them.") }
-        } catch (e: IOException) {
-            throw e
         } catch (e: Exception) {
+            if (lostConnection(e)) throw e
             update { copy(message = "Stopped and undid the last batch: ${e.message}. If the phone refused to disable an app, try Uninstall.") }
         } finally {
-            if (debloat.record.exists()) runCatching { saveCopy(debloat.record) }
+            runCatching { saveCopy(debloat.record) }
             val s = rescan(l)
             update { copy(removed = debloat.removed, scan = s) }
         }
     }
 
     fun restore(pkgs: Set<String>) = withLink("Restoring…") { l ->
-        debloat.restore(l.shell, pkgs)
+        try { debloat.restore(l.shell, pkgs) } finally { runCatching { saveCopy(debloat.record) } }
         val s = rescan(l)
         update { copy(removed = debloat.removed, scan = s) }
     }
@@ -154,9 +153,8 @@ class Phone(
         update { copy(busy = label, message = null) }
         background {
             try { work() } catch (e: IOException) {
-                if (e !is SocketException && e !is EOFException && e !is SSLException) update { copy(message = explain(e)) }
+                if (!lostConnection(e)) update { copy(message = explain(e)) }
                 else {
-                    // adbd dropped us, e.g. Wireless debugging went off when Wi-Fi changed or the phone slept
                     link?.let { runCatching { it.close() } }; drop()
                     update { copy(wirelessOn = wirelessOn(), message = "The connection to this phone was lost. If Wireless debugging went off, turn it on again, then tap Retry.") }
                 }
@@ -173,6 +171,9 @@ class Phone(
         else m
     }
 }
+
+/** adbd dropped us, e.g. Wireless debugging went off when Wi-Fi changed or the phone slept; other IOExceptions are refused commands. */
+internal fun lostConnection(e: Throwable) = e is SocketException || e is EOFException || e is SSLException
 
 /** "Kiosk", "E-reader": the name the screens use. */
 val Profile.label get() = name.lowercase().replace('_', '-').replaceFirstChar { it.uppercase() }

@@ -1,5 +1,6 @@
 package io.github.sarat03.monomode
 
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.provider.MediaStore
@@ -23,16 +24,19 @@ object Records {
         override fun putString(key: String, value: String) = prefs(key).edit().putString(name(key), value).apply()
     })
 
-    /** Copies [record] to Downloads/MonoMode; no storage permission needed on Android 10+. Returns the display path. */
-    fun copyToDownloads(ctx: Context, record: File): String {
-        val name = "monomode-${record.nameWithoutExtension}-${System.currentTimeMillis() / 1000}.txt"
-        val values = ContentValues().apply {
-            put(MediaStore.Downloads.DISPLAY_NAME, name)
-            put(MediaStore.Downloads.MIME_TYPE, "text/plain")
-            put(MediaStore.Downloads.RELATIVE_PATH, "Download/MonoMode")
-        }
-        val uri = ctx.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: error("could not create $name in Downloads")
-        ctx.contentResolver.openOutputStream(uri)!!.use { it.write(record.readBytes()) }
-        return "Download/MonoMode/$name"
+    /** Copies [record] to Downloads/MonoMode, one file overwritten each time (empty once everything is restored); no storage permission needed on Android 10+. */
+    fun copyToDownloads(ctx: Context, record: File) {
+        val name = "monomode-${record.nameWithoutExtension}.txt"
+        val dir = "Download/MonoMode/"
+        val files = MediaStore.Downloads.EXTERNAL_CONTENT_URI
+        // shortcut: only finds the file this install created; after a reinstall Android adds a numbered copy beside the old one
+        val uri = ctx.contentResolver.query(files, arrayOf(MediaStore.Downloads._ID), "${MediaStore.Downloads.DISPLAY_NAME}=? AND ${MediaStore.Downloads.RELATIVE_PATH}=?", arrayOf(name, dir), null)
+            ?.use { if (it.moveToFirst()) ContentUris.withAppendedId(files, it.getLong(0)) else null }
+            ?: ctx.contentResolver.insert(files, ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, name)
+                put(MediaStore.Downloads.MIME_TYPE, "text/plain")
+                put(MediaStore.Downloads.RELATIVE_PATH, dir)
+            }) ?: error("could not create $name in Downloads")
+        ctx.contentResolver.openOutputStream(uri, "wt")!!.use { it.write(if (record.exists()) record.readBytes() else ByteArray(0)) }
     }
 }

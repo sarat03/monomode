@@ -37,7 +37,6 @@ class NetworkTest {
 
     @Test fun `outbound lists remote and app`() = assertEquals(listOf("216.58.216.34:443" to "com.chat.app"), r.outbound.map { it.remote to it.app })
 
-    @Test fun `adb port flagged`() = assertTrue(r.adbExposed)
 
     @Test fun `reads only fixed proc files`() =
         assertEquals(setOf(listOf("cat", "/proc/net/tcp"), listOf("cat", "/proc/net/tcp6"), listOf("pm", "list", "packages", "-U")), calls.toSet())

@@ -125,4 +125,16 @@ class PhoneTest {
         p.restore(setOf("com.a"))
         assertTrue("com.a" in p.state.scan!!.others)
     }
+
+    @Test fun `a refused disable gets the plain-words message, not just the command`() {
+        val pm = EngineTest.FakeShell(listOf("com.vendor.locked"))
+        val p = Phone(
+            open = { object : Link { override val shell = pm; override fun check() = emptyList<Finding>(); override fun finish() = true; override fun close() {} } },
+            debloat = Debloat(File(dir, "d3.txt")), modes = Modes(dir, ModesTest.MapStore()), wirelessOn = { true }, background = { it() },
+        )
+        p.refresh(paired = true)
+        p.remove(listOf("com.vendor.locked"), Method.DISABLE)
+        assertTrue("try Uninstall" in p.state.message.orEmpty(), p.state.message)
+        assertTrue(p.state.connected)
+    }
 }

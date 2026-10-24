@@ -72,7 +72,7 @@ private fun Shell.write(c: Change, value: String) {
         c.ns == HOME -> if (!value.endsWith("ResolverActivity")) run(listOf("cmd", "package", "set-home-activity", value))
         c.ns == DND -> run(listOf("cmd", "notification", "set_dnd", value)) // writing zen_mode directly is ignored
         // was unset before; Android 11 exits 1 when the key is already gone, which is the state we want
-        value == "null" -> runCatching { run(listOf("settings", "delete", c.ns, c.key)) }
+        value == "null" -> try { run(listOf("settings", "delete", c.ns, c.key)) } catch (e: Exception) { if (lostConnection(e)) throw e }
         else -> run(listOf("settings", "put", c.ns, c.key, value))
     }
 }
@@ -94,8 +94,9 @@ fun applyProfile(sh: Shell, profile: Profile, record: File, off: Set<String> = e
         for ((c, before) in previous) { sh.write(c, c.value); done += c to before }
     } catch (e: Exception) {
         // undo in reverse, best effort, so a refused write never leaves the phone half changed
-        for ((c, before) in done.asReversed()) runCatching { sh.write(c, before) }
-        record.delete()
+        val undone = done.asReversed().all { (c, before) -> runCatching { sh.write(c, before) }.isSuccess }
+        // an undo that failed (connection lost) keeps the record, so the mode stays on and Turn off can still put everything back
+        if (undone) record.delete()
         throw e
     }
 }

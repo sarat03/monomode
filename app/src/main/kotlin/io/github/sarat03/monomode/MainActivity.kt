@@ -106,7 +106,7 @@ class MainActivity : ComponentActivity() {
         var launcherPkgs by mutableStateOf<Set<String>>(emptySet())
         var query by mutableStateOf("")
         val restorePick = mutableStateListOf<String>()
-        /** The mode whose page is open under Modes; null shows the list of modes. */
+        /** The mode whose page is open; null shows Home. */
         var openMode by mutableStateOf<Profile?>(null)
         /** App cleaner's chip: 0 apps, 1 background services, 2 removed (restore). */
         var cleanFilter by mutableStateOf(0)
@@ -541,11 +541,9 @@ class MainActivity : ComponentActivity() {
         Checkbox(pkg in selected, null) // the whole row toggles it, and reads as one checkbox to TalkBack
     }
 
-    /** App name, or the package name for apps Android does not let us see. Cached: lists redraw on every search keystroke. */
+    /** Cached: lists redraw on every search keystroke. */
     private val labels = HashMap<String, String>()
-    private fun label(pkg: String) = labels.getOrPut(pkg) {
-        runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)
-    }
+    private fun label(pkg: String) = labels.getOrPut(pkg) { appLabel(this, pkg) }
 
     private val Profile.what get() = when (this) {
         Profile.KIOSK -> "Only the apps you choose."

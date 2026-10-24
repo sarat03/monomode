@@ -1,5 +1,5 @@
 """Engine tests against a fake ADB. Run: python3 -m unittest -v"""
-import json, tempfile, unittest
+import json, subprocess, tempfile, unittest
 from pathlib import Path
 
 import core
@@ -111,11 +111,20 @@ class Apply(unittest.TestCase):
         for c in adb.calls:
             self.assertIn(c[0], {"pm", "cmd", "settings"})
 
-    def test_network_reads_only_fixed_proc_files(self):
-        adb = NetAdb([])
-        core.network(adb)
-        for c in adb.calls:
-            self.assertIn(c, [["cat", "/proc/net/tcp"], ["cat", "/proc/net/tcp6"], ["pm", "list", "packages", "-U"]])
+    def test_a_command_failing_mid_batch_rolls_the_batch_back(self):
+        adb = LockedAdb(["com.a.b", "com.vendor.locked"])
+        with self.assertRaises(subprocess.CalledProcessError):
+            core.apply(adb, core.plan(adb, [("com.a.b", "safe"), ("com.vendor.locked", "safe")]), self.rec, dry_run=False)
+        self.assertIn("com.a.b", adb.enabled)
+        self.assertEqual(json.loads(self.rec.read_text())["disabled"], [])
+
+
+class LockedAdb(FakeAdb):
+    """Refuses to disable com.vendor.locked, like adb's check=True does for a vendor-locked app."""
+    def __call__(self, args):
+        if args[:2] == ["pm", "disable-user"] and args[-1] == "com.vendor.locked":
+            raise subprocess.CalledProcessError(255, args)
+        return super().__call__(args)
 
 
 class Drift(unittest.TestCase):
@@ -125,44 +134,6 @@ class Drift(unittest.TestCase):
         core.apply(adb, core.plan(adb, [("com.a.b", "safe"), ("com.c.d", "safe")]), rec, dry_run=False)
         adb.disabled.discard("com.c.d"); adb.enabled.add("com.c.d")  # OTA re-enabled it
         self.assertEqual(core.drift(adb, rec), ["com.c.d"])
-
-
-TCP4 = """  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
-   0: 0100007F:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000  2000        0 1 1
-   1: 00000000:15B3 00000000:0000 0A 00000000:00000000 00:00000000 00000000 10050        0 2 1
-   2: 0F01A8C0:15B3 2301A8C0:D431 01 00000000:00000000 00:00000000 00000000 10050        0 3 1
-   3: 0F01A8C0:9C40 22D83AD8:01BB 01 00000000:00000000 00:00000000 00000000 10077        0 4 1
-"""
-TCP6 = """  sl  local_address                         remote_address                        st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode
-   0: 0000000000000000FFFF00000F01A8C0:15B3 0000000000000000FFFF00006401A8C0:C350 01 00000000:00000000 00:00000000 00000000 10050        0 5 1
-"""
-
-
-class NetAdb(FakeAdb):
-    def __call__(self, args):
-        if args == ["cat", "/proc/net/tcp"]: return TCP4
-        if args == ["cat", "/proc/net/tcp6"]: return TCP6
-        if args == ["pm", "list", "packages", "-U"]:
-            return "package:com.share.app uid:10050\npackage:com.chat.app uid:10077\n"
-        return super().__call__(args)
-
-
-class Network(unittest.TestCase):
-    def setUp(self):
-        self.r = core.network(NetAdb([]))
-
-    def test_listening_ignores_loopback(self):
-        self.assertEqual([(c["local"], c["app"]) for c in self.r["listening"]], [("0.0.0.0:5555", "com.share.app")])
-
-    def test_inbound_is_connection_to_a_listening_port(self):
-        got = {(c["remote"], c["app"]) for c in self.r["inbound"]}
-        self.assertEqual(got, {("192.168.1.35:54321", "com.share.app"), ("192.168.1.100:50000", "com.share.app")})
-
-    def test_outbound_lists_remote_and_app(self):
-        self.assertEqual([(c["remote"], c["app"]) for c in self.r["outbound"]], [("216.58.216.34:443", "com.chat.app")])
-
-    def test_adb_port_flagged(self):
-        self.assertTrue(self.r["adb_exposed"])
 
 
 if __name__ == "__main__":
