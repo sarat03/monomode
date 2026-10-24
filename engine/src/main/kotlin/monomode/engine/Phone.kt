@@ -55,11 +55,14 @@ class Phone(
     @Volatile var state = PhoneState()
         private set
     @Volatile private var link: Link? = null
+    /** Set when the app left the screen mid-change; the change finishes first, then Wireless debugging goes off. */
+    @Volatile private var finishWhenIdle = false
 
     @Synchronized private fun update(f: PhoneState.() -> PhoneState) { state = state.f(); onChange(state) }
 
     /** Rereads the phone (on every return to the app); connects and checks when paired and Wireless debugging is on. */
     fun refresh(paired: Boolean) {
+        finishWhenIdle = false
         val on = wirelessOn()
         update { copy(wirelessOn = on, activeMode = modes.active, removed = debloat.removed) }
         // Android switched Wireless debugging off while we were away: that link is dead
@@ -136,8 +139,11 @@ class Phone(
         update { copy(wirelessOn = wirelessOn(), message = if (off) null else "Wireless debugging may still be on. Turn it off in Developer options.") }
     }
 
-    /** Best effort when the app closes for good: never leave Wireless debugging on. */
-    fun finishQuietly() { link?.let { l -> background { runCatching { l.finish() } } } }
+    /** Best effort when the app leaves the screen: never leave Wireless debugging on. A running change is not cut short. */
+    fun finishQuietly() {
+        if (state.busy != null) { finishWhenIdle = true; return }
+        link?.let { l -> drop(); background { runCatching { l.finish() } } }
+    }
 
     /** Forgets the session, e.g. after the pairing was forgotten. */
     fun disconnect() { link?.let { l -> background { runCatching { l.close() } } }; drop() }
@@ -158,7 +164,10 @@ class Phone(
                     link?.let { runCatching { it.close() } }; drop()
                     update { copy(wirelessOn = wirelessOn(), message = "The connection to this phone was lost. If Wireless debugging went off, turn it on again, then tap Retry.") }
                 }
-            } catch (e: Exception) { update { copy(message = explain(e)) } } finally { update { copy(busy = null) } }
+            } catch (e: Exception) { update { copy(message = explain(e)) } } finally {
+                update { copy(busy = null) }
+                if (finishWhenIdle) { finishWhenIdle = false; link?.let { l -> drop(); runCatching { l.finish() } } }
+            }
         }
     }
 

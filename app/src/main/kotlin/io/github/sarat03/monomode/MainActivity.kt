@@ -142,10 +142,10 @@ class MainActivity : ComponentActivity() {
         ph.refresh(paired)
     }
 
-    override fun onDestroy() {
-        // a session must never be left with Wireless debugging on; best effort when the app is closed
-        if (isFinishing) ph.finishQuietly()
-        super.onDestroy()
+    override fun onStop() {
+        // leaving the screen ends the session: some phones (realme) kill the app from Recents without onDestroy, leaving Wireless debugging on
+        if (!isChangingConfigurations) ph.finishQuietly()
+        super.onStop()
     }
 
     // own task, so opening MonoMode again brings back MonoMode, not Settings
