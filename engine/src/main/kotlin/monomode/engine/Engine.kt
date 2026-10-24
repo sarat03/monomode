@@ -36,11 +36,11 @@ data class Plan(
     val tooRisky: List<String> = emptyList(),
 )
 
-class HealthException(msg: String) : RuntimeException(msg)
+internal class HealthException(msg: String) : RuntimeException(msg)
 
-val PKG_RE = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$")
+internal val PKG_RE = Regex("^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+$")
 
-val PROTECTED: Set<String> = Shell::class.java.getResource("/protected.txt")!!.readText()
+internal val PROTECTED: Set<String> = Shell::class.java.getResource("/protected.txt")!!.readText()
     .lines().map { it.substringBefore("#").trim() }.filter { it.isNotEmpty() }.toSet()
 
 /** Lines: `package[|risk]  # comment`. Risk defaults to safe. */
@@ -97,11 +97,14 @@ internal fun recorded(record: File): Map<String, Method> =
     }
 
 /** Deletes the record once nothing is left in it. */
+/** Writes and flushes to disk, so the rename that follows never exposes an empty file after a power cut. */
+internal fun File.writeSynced(text: String) = java.io.FileOutputStream(this).use { it.write(text.toByteArray()); it.fd.sync() }
+
 private fun writeRecord(record: File, entries: Map<String, Method>) {
     if (entries.isEmpty()) { record.delete(); return }
     record.parentFile?.mkdirs()
     val tmp = File(record.path + ".tmp")
-    tmp.writeText(entries.toSortedMap().entries.joinToString("") { (pkg, m) -> "$pkg${m.tag}\n" })
+    tmp.writeSynced(entries.toSortedMap().entries.joinToString("") { (pkg, m) -> "$pkg${m.tag}\n" })
     check(tmp.renameTo(record)) { "could not write $record" }
 }
 

@@ -8,7 +8,7 @@ import kotlin.test.assertFailsWith
 
 /** Connection against a scripted adbd; constants come from AOSP adb.h (A_VERSION, MAX_PAYLOAD, A_STLS_VERSION). */
 class AdbConnectionTest {
-    class FakeAdbd(vararg replies: AdbMessage) : AdbTransport {
+    internal class FakeAdbd(vararg replies: AdbMessage) : AdbTransport {
         private val incoming = replies.fold(ByteArray(0)) { a, m -> a + m.encode() }
         private var pos = 0
         val sent = ByteArrayOutputStream()

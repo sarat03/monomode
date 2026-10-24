@@ -22,7 +22,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -469,7 +468,7 @@ class MainActivity : ComponentActivity() {
             val p = sc.plan
             val others = remember(sc) { sc.others.map { it to label(it) }.sortedBy { it.second.lowercase() } }
             OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), placeholder = { Text("Search apps") }, leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                singleLine = true, shape = RoundedCornerShape(28.dp))
+                singleLine = true, shape = MaterialTheme.shapes.large)
             val withIcon = launcherPkgs
             if (cleanFilter == 1) {
                 Text("Many are needed by the phone. Leave the ones you don't know.",
@@ -672,7 +671,7 @@ class MainActivity : ComponentActivity() {
                     Icon(Icons.Outlined.Info, null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
                     Text("To unpin: ${unpinHow()}${if (askPin) ". The phone then asks for your PIN." else "."}", color = MaterialTheme.colorScheme.onPrimaryContainer)
                 }
-                OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), placeholder = { Text("Search") }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true, shape = RoundedCornerShape(28.dp))
+                OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), placeholder = { Text("Search") }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true, shape = MaterialTheme.shapes.large)
                 LazyColumn(Modifier.heightIn(max = 480.dp)) { items(list.filter { it.matches(q) }) { (component, label) ->
                     Row(
                         Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(MaterialTheme.shapes.medium).clickable(enabled = ps.busy == null) {
