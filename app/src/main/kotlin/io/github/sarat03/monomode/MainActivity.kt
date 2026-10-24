@@ -245,7 +245,7 @@ class MainActivity : ComponentActivity() {
     private fun SessionScreen() = when (tab) {
         Page.CHECK -> Paged("Network & access") { CheckTab() }
         Page.CLEAN -> Paged("App cleaner", bottom = cleanupBar()) { CleanupTab() }
-        Page.MODES -> openMode?.let { p -> Paged(p.label, back = { openMode = null }) { ModePage(p) } } ?: Paged("Modes") { ModesTab() }
+        Page.MODES -> openMode?.let { p -> Paged(p.label, back = { openMode = null; tab = Page.HOME }) { ModePage(p) } } ?: Paged("Modes") { ModesTab() }
         else -> Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) { HomeTab() }
     }
 
@@ -382,7 +382,7 @@ class MainActivity : ComponentActivity() {
         val (system, own) = (r ?: return).sortedBy { it.level }.partition { it.system }
         val (needs, fine) = own.partition { it.level == Level.LOOK }
         if (needs.isNotEmpty()) { Section("Needs a look"); needs.forEach { FindingCard(it) } }
-        if (fine.isNotEmpty()) { Section("Using the internet"); fine.forEach { FindingCard(it) } }
+        if (fine.isNotEmpty()) { if (fine.any { it.apps.isNotEmpty() }) Section("Using the internet"); fine.forEach { FindingCard(it) } }
         if (system.isNotEmpty()) {
             var open by remember { mutableStateOf(false) }
             ListRow("Built-in apps", "${system.size} found, usually how Android works") { open = true }
