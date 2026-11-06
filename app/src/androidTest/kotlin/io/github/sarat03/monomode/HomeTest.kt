@@ -127,6 +127,8 @@ class HomeFirstRunTest {
             rule.onAllNodesWithText("MonoMode").assertCountEquals(0)
             rule.onAllNodesWithText("Modes").assertCountEquals(1)
             rule.onNodeWithText("All apps").performClick()
+            // search, not scroll: the list only builds rows on screen, and on a small screen (CI's 320x640) MonoMode is below them
+            rule.onNodeWithText("Search apps").performTextInput("Mono")
             rule.onAllNodesWithText("MonoMode").assertCountEquals(1)
         }
     }
@@ -140,8 +142,8 @@ class WayBackTest {
 
     /** Pairing happens inside Android's Settings; both notifications must lead back to MonoMode. */
     @Test fun pairingNotificationsOpenMonoMode() {
-        // granted at setup in the app; a fresh test install has not been asked yet
-        inst.uiAutomation.grantRuntimePermission(ctx.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
+        // granted at setup in the app; a fresh test install has not been asked yet. The permission exists from Android 13 (API 33)
+        if (android.os.Build.VERSION.SDK_INT >= 33) inst.uiAutomation.grantRuntimePermission(ctx.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
         val nm = ctx.getSystemService(android.app.NotificationManager::class.java)
         // notifications are posted asynchronously: wait for the one with [title]
         fun posted(title: String) = (1..50).firstNotNullOfOrNull {
