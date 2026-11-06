@@ -131,5 +131,30 @@ class AdbConnectionTest {
         assertEquals(open.hex(), adbd.sent.toByteArray().copyOfRange(before, before + open.size).hex())
     }
 
-    private fun ByteArray.hex() = joinToString("") { "%02x".format(it) }
+    @Test
+    fun `two threads run commands at once and each gets its own stream's output`() {
+        fun m(c: Command, a0: Int, a1: Int, p: String = "") = AdbMessage(c, a0, a1, p.toByteArray())
+        val adbd = FakeAdbd(
+            m(Command.STLS, 0x01000000, 0), m(Command.CNXN, 0x01000001, 4096, "device::"),
+            // adbd interleaves the two streams; stream 2 finishes first
+            m(Command.OKAY, 7, 1), m(Command.OKAY, 8, 2), m(Command.WRTE, 7, 1, "one"), m(Command.WRTE, 8, 2, "two"),
+            m(Command.CLSE, 8, 2), m(Command.CLSE, 7, 1),
+        )
+        val opened = java.util.concurrent.CountDownLatch(2)
+        // replies wait until both streams are open, as real adbd never answers an OPEN it has not seen
+        val gated = object : AdbTransport by adbd {
+            var connected = false
+            override fun write(bytes: ByteArray) { adbd.write(bytes); if (connected && AdbMessage.decode(bytes).command == Command.OPEN) opened.countDown() }
+            override fun readFully(n: Int): ByteArray { if (connected) opened.await(); return adbd.readFully(n) }
+        }
+        val conn = AdbConnection(gated).apply { connect() }
+        gated.connected = true
+        val results = java.util.concurrent.ConcurrentHashMap<String, String>()
+        val threads = listOf("echo one", "echo two").map { cmd -> Thread { results[cmd] = conn.shell(cmd) }.apply { start() } }
+        threads.forEach { it.join(5_000) }
+        // which thread got local id 1 depends on scheduling, so check the pairing, not the order
+        assertEquals(setOf("one", "two"), results.values.toSet())
+    }
+
+    private fun ByteArray.hex()= joinToString("") { "%02x".format(it) }
 }
