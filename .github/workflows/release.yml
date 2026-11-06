@@ -1,0 +1,29 @@
+name: release
+# Push a tag like v0.1.0 after the manual checklist in docs/release.md.
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew :adb:test :engine:test
+      - name: Build signed APK
+        env:
+          KEYSTORE_B64: ${{ secrets.MONOMODE_KEYSTORE_B64 }}
+          MONOMODE_KEYSTORE_PASSWORD: ${{ secrets.MONOMODE_KEYSTORE_PASSWORD }}
+          MONOMODE_KEY_ALIAS: ${{ secrets.MONOMODE_KEY_ALIAS }}
+          MONOMODE_KEY_PASSWORD: ${{ secrets.MONOMODE_KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_B64" || { echo "MONOMODE_KEYSTORE_B64 secret missing"; exit 1; }
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          MONOMODE_KEYSTORE="$RUNNER_TEMP/release.jks" ./gradlew :app:assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk "monomode-${GITHUB_REF_NAME}.apk"
+      - run: gh release create "$GITHUB_REF_NAME" "monomode-${GITHUB_REF_NAME}.apk" --generate-notes
+        env: { GH_TOKEN: '${{ github.token }}' }

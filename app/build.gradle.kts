@@ -16,6 +16,15 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // release key comes from the environment (CI secrets); without it, release builds use the debug key
+    val keystore = System.getenv("MONOMODE_KEYSTORE")?.let(::file)
+    if (keystore != null) signingConfigs.create("release") {
+        storeFile = keystore
+        storePassword = System.getenv("MONOMODE_KEYSTORE_PASSWORD")
+        keyAlias = System.getenv("MONOMODE_KEY_ALIAS")
+        keyPassword = System.getenv("MONOMODE_KEY_PASSWORD")
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true // R8: smaller, faster app
@@ -23,8 +32,7 @@ android {
             // phones are ARM; Conscrypt's x86 libraries (6 MB) only serve emulators, which run the debug build
             ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
-            // shortcut: debug key so it installs over dev builds, use a real key before publishing
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 
@@ -48,6 +56,8 @@ dependencies {
 
     androidTestImplementation(platform("androidx.compose:compose-bom:2026.09.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    // Google's Accessibility Test Framework behind enableAccessibilityChecks / tryPerformAccessibilityChecks
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4-accessibility")
     debugImplementation("androidx.compose.ui:ui-test-manifest") // the empty activity createComposeRule hosts content in
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

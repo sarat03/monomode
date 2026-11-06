@@ -16,6 +16,8 @@ private const val HOME = "home"
 /** MonoMode's own home screen, showing only the apps picked for the mode that is on. */
 const val MODE_HOME = "io.github.sarat03.monomode/.HomeActivity"
 private val ownHome = Change(HOME, "activity", MODE_HOME)
+/** The option that gives a mode its own home screen; the home screen reads it to know whether the mode is its business. */
+const val OWN_HOME = "Own home screen"
 
 private val grayscale = listOf(
     Change("secure", "accessibility_display_daltonizer_enabled", "1"),
@@ -34,29 +36,29 @@ private val batterySaver = listOf(
 /**
  * Each mode is a set of named options the user can switch off one by one.
  * Debloat and the KOReader recommendation are offered by the app next to these; they are not settings.
- */
-/**
+ *
  * [whenOff]: what an option sets when the user switches it off, for settings whose Android default is
  * already "on" (leaving them alone would not turn them off). Other options are simply left alone.
+ * [always]: what the mode cannot work without, so it is not an option.
  */
-enum class Profile(val options: Map<String, List<Change>>, val whenOff: Map<String, List<Change>> = emptyMap()) {
+enum class Profile(val options: Map<String, List<Change>>, val whenOff: Map<String, List<Change>> = emptyMap(), val always: List<Change> = emptyList()) {
+    // one app pinned to the screen, a real kiosk: no home screen of its own, the pinned app is all there is
     KIOSK(mapOf(
-        "Allow pinning an app" to listOf(Change("secure", "lock_to_app_enabled", "1")), // the user pins the app
         "Screen stays on while charging" to listOf(Change("global", "stay_on_while_plugged_in", "7")), // AC | USB | wireless
         "Mute notifications" to listOf(muted),
-        "Own home screen" to listOf(ownHome),
         // Android asks for the PIN by default when the phone has a screen lock
         "Ask for PIN to unpin" to listOf(Change("secure", "lock_to_app_exit_locked", "1")),
-    ), whenOff = mapOf("Ask for PIN to unpin" to listOf(Change("secure", "lock_to_app_exit_locked", "0")))),
+    ), whenOff = mapOf("Ask for PIN to unpin" to listOf(Change("secure", "lock_to_app_exit_locked", "0"))),
+        always = listOf(Change("secure", "lock_to_app_enabled", "1"))), // screen pinning, which the kiosk app is held by
     E_READER(mapOf(
         "Grayscale screen" to grayscale,
         "No animations" to noAnimations,
         "Mute notifications" to listOf(muted),
         "Battery saver" to batterySaver,
-        "Own home screen" to listOf(ownHome),
+        OWN_HOME to listOf(ownHome),
     ));
 
-    val changes get() = options.values.flatten()
+    val changes get() = always + options.values.flatten()
 }
 
 private fun Shell.read(c: Change): String =
@@ -83,7 +85,7 @@ private fun Shell.write(c: Change, value: String) {
  */
 fun applyProfile(sh: Shell, profile: Profile, record: File, off: Set<String> = emptySet()) {
     check(!record.exists()) { "a profile is already applied; restore it first" }
-    val chosen = profile.options.filterKeys { it !in off }.values.flatten() + profile.whenOff.filterKeys { it in off }.values.flatten()
+    val chosen = profile.always + profile.options.filterKeys { it !in off }.values.flatten() + profile.whenOff.filterKeys { it in off }.values.flatten()
     val previous = chosen.map { it to sh.read(it) }
     record.parentFile?.mkdirs()
     val tmp = File(record.path + ".tmp")

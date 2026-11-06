@@ -38,6 +38,30 @@ class PhoneTest {
         wirelessOn = { wireless }, background = { it() },
     )
 
+    @Test fun `leaving after a failed connect still switches Wireless debugging off`() {
+        var off = 0
+        var work: (() -> Unit)? = null
+        val p = Phone(open = { throw java.io.IOException("no port") }, debloat = Debloat(File(dir, "d.txt")), modes = Modes(dir, ModesTest.MapStore()),
+            wirelessOn = { true }, background = { work = it }, switchOff = { off++ })
+        p.refresh(paired = true)  // connecting, held in background
+        p.finishQuietly()         // the user left mid-connect
+        assertEquals(0, off)
+        work!!()                  // the connect fails
+        assertEquals(1, off)
+        p.finishQuietly()         // leaving with no link at all
+        assertEquals(2, off)
+    }
+
+    @Test fun `disconnect runs its last command, then switches Wireless debugging off over the link`() {
+        val ran = mutableListOf<List<String>>()
+        val p = Phone(open = { object : Link by link { override val shell = Shell { a -> ran += a; "" }; override fun finish(): Boolean { ran += listOf("finish"); return true } } },
+            debloat = Debloat(File(dir, "d.txt")), modes = Modes(dir, ModesTest.MapStore()), wirelessOn = { true }, background = { it() })
+        p.refresh(paired = true)
+        p.disconnect(listOf("pm", "revoke", "app", "perm"))
+        assertEquals(listOf(listOf("pm", "revoke", "app", "perm"), listOf("finish")), ran.takeLast(2))
+        assertFalse(p.state.connected)
+    }
+
     @Test fun `paired with Wireless debugging on connects and checks by itself`() {
         phone.refresh(paired = true)
         assertTrue(phone.state.connected)
@@ -65,6 +89,15 @@ class PhoneTest {
         phone.connect()
         assertTrue(phone.state.connected)
         assertFalse(phone.state.retryShown)
+    }
+
+    @Test fun `turning Kiosk on applies its settings, pins the app and switches Wireless debugging off`() {
+        phone.refresh(paired = true)
+        phone.turnOnKiosk("com.example/.Main", "Example")
+        assertEquals(Profile.KIOSK, phone.state.activeMode)
+        assertEquals("1", settings.values["secure lock_to_app_enabled"])
+        assertTrue(link.finished)
+        assertFalse(phone.state.connected)
     }
 
     @Test fun `leaving the app switches Wireless debugging off, after a running change finishes`() {

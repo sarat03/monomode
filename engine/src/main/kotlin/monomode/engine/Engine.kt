@@ -96,10 +96,10 @@ internal fun recorded(record: File): Map<String, Method> =
         line.substringBefore(" ") to if (line.endsWith(Method.REMOVE.tag)) Method.REMOVE else Method.DISABLE
     }
 
-/** Deletes the record once nothing is left in it. */
 /** Writes and flushes to disk, so the rename that follows never exposes an empty file after a power cut. */
 internal fun File.writeSynced(text: String) = java.io.FileOutputStream(this).use { it.write(text.toByteArray()); it.fd.sync() }
 
+/** Deletes the record once nothing is left in it. */
 private fun writeRecord(record: File, entries: Map<String, Method>) {
     if (entries.isEmpty()) { record.delete(); return }
     record.parentFile?.mkdirs()
