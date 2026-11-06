@@ -2,10 +2,13 @@ package io.github.sarat03.monomode
 
 import android.Manifest
 import android.content.Intent
+import kotlin.concurrent.thread
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -81,6 +84,7 @@ import androidx.compose.ui.unit.dp
 import monomode.engine.Finding
 import monomode.engine.Level
 import monomode.engine.Method
+import monomode.engine.OWN_HOME
 import monomode.engine.Profile
 import monomode.engine.Risk
 import monomode.engine.parseList
@@ -117,12 +121,15 @@ class MainActivity : ComponentActivity() {
         Phone(
             open = { Session.open(app) }, debloat = Records.debloater(app), modes = Records.modes(app),
             wirelessOn = { Session.isWirelessDebuggingOn(app) }, saveCopy = { Records.copyToDownloads(app, it) }, onChange = { ps = it },
+            switchOff = { if (Session.canSwitch(app)) Session.switch(app, false) },
         ).also { phone = it }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Appearance.load(this)
+        // colour runs under the status and navigation bars, as on the home screen; content keeps clear with safeDrawingPadding
+        enableEdgeToEdge()
         openPage(intent)
         setContent { AppTheme { Surface(Modifier.fillMaxSize()) { Screen() } } }
     }
@@ -138,6 +145,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         paired = Pairing.isPaired(this)
+        // MonoMode switches Wireless debugging on itself once it holds the permission; otherwise the user does, in Developer options
+        if (paired && !Session.isWirelessDebuggingOn(this) && Session.canSwitch(this)) Session.switch(this, true)
         // paired and Wireless debugging on: connects and checks straight away, no Start button
         ph.refresh(paired)
     }
@@ -256,11 +265,6 @@ class MainActivity : ComponentActivity() {
             bottom?.let { HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant); it() }
         }
 
-    /** A small heading over a group of cards. */
-    @Composable
-    private fun Section(text: String) = Text(text, Modifier.padding(start = 8.dp, top = 8.dp).semantics { heading() },
-        style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-
     /** The status card at the top of a page: icon, one big line, a sentence, then its actions. */
     @Composable
     private fun Hero(tone: Tone, icon: ImageVector, title: String, text: String, actions: @Composable () -> Unit = {}) =
@@ -281,7 +285,7 @@ class MainActivity : ComponentActivity() {
     private fun SettingsPage() {
         Section(getString(R.string.connection))
         SettingRow(getString(R.string.pairing), if (paired) getString(R.string.this_phone_is_paired_with) else getString(R.string.not_paired_yet)) {
-            if (paired) OutlinedButton({ Pairing.forget(applicationContext); paired = false; ph.disconnect(); tab = Page.HOME },
+            if (paired) OutlinedButton({ forgetPairing() },
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(getString(R.string.forget_and_pair_again)) }
         }
         Section(getString(R.string.appearance))
@@ -293,11 +297,29 @@ class MainActivity : ComponentActivity() {
                 ) { RadioButton(Appearance.mode == key, null); Text(getString(name)) }
             }
         }
+        Section(getString(R.string.home_screen))
+        // Android decides the default home app; this only shows which it is and opens Android's own chooser
+        val ours = packageManager.resolveActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName == packageName
+        SettingRow(getString(R.string.home_screen), getString(if (ours) R.string.monomode_is_your_home_screen else R.string.your_phones_own_home_screen)) {
+            OutlinedButton({ runCatching { startActivity(Intent(Settings.ACTION_HOME_SETTINGS)) } }) { Text(getString(R.string.change)) }
+        }
         Section(getString(R.string.backups))
         SettingRow(getString(R.string.restore_lists), getString(R.string.a_copy_of_what_was))
         Section(getString(R.string.about))
         SettingRow(getString(R.string.app_name), getString(R.string.about_version, packageManager.getPackageInfo(packageName, 0).versionName)) {
             OutlinedButton({ startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/sarat03/monomode"))) }) { Text(getString(R.string.source_code)) }
+        }
+    }
+
+    /** Forgets the pairing and takes back MonoMode's Wireless debugging switch, connected or not. */
+    private fun forgetPairing() {
+        val app = applicationContext
+        Pairing.forget(app); paired = false; tab = Page.HOME
+        if (ps.connected) ph.disconnect(Session.revokeSwitch(app))
+        // not connected: switch on, connect once to revoke, then off over that link (after the revoke the app cannot switch it)
+        else if (Session.canSwitch(app)) thread {
+            runCatching { Session.switch(app, true); Session.open(app).run { runCatching { shell.run(Session.revokeSwitch(app)) }; finish() } }
+            if (Session.canSwitch(app)) Session.switch(app, false) // the revoke failed: at least leave it off
         }
     }
 
@@ -544,11 +566,7 @@ class MainActivity : ComponentActivity() {
     private val labels = HashMap<String, String>()
     private fun label(pkg: String) = labels.getOrPut(pkg) { appLabel(this, pkg) }
 
-    private val Profile.what get() = when (this) {
-        Profile.KIOSK -> getString(R.string.only_the_apps_you_choose)
-        Profile.E_READER -> getString(R.string.a_calm_grey_screen_for)
-    }
-    private val Profile.icon get() = when (this) { Profile.KIOSK -> AppIcons.Grid; Profile.E_READER -> AppIcons.Book }
+    private val Profile.what get() = getString(whatRes)
 
     /** A mode's page: its state and switch on top, then what it changes, its apps and, for Kiosk, pinning. */
     @Composable
@@ -563,12 +581,18 @@ class MainActivity : ComponentActivity() {
             else if (on != null) getString(R.string.turn_off_1x_first_one, on.label) else profile.what,
         ) {
             val t = if (on == profile) safeTone() else neutralTone()
-            if (on == profile) Button({
-                ph.turnOff()
-            }, enabled = ps.busy == null, colors = ButtonDefaults.buttonColors(t.fg, t.bg)) { Text(getString(R.string.turn_off)) }
+            val kioskApp = if (profile == Profile.KIOSK) kioskApp() else null
+            if (on == profile) {
+                Button({
+                    ph.turnOff()
+                }, enabled = ps.busy == null, colors = ButtonDefaults.buttonColors(t.fg, t.bg)) { Text(getString(R.string.turn_off)) }
+                // after someone unpinned: Kiosk is still on, so the app can be pinned again
+                kioskApp?.let { (component, label) -> OutlinedButton({ ph.pin(component, label) }, enabled = ps.busy == null) { Text(getString(R.string.pin_again), color = t.fg) } }
+            }
             else Button({
-                ph.turnOn(profile)
-            }, enabled = ps.busy == null && on == null) { Text(getString(R.string.turn_on)) }
+                // Kiosk is one step: settings, then its app pinned, then Wireless debugging off
+                if (profile == Profile.KIOSK) kioskApp?.let { (component, label) -> ph.turnOnKiosk(component, label) } else ph.turnOn(profile)
+            }, enabled = ps.busy == null && on == null && (profile != Profile.KIOSK || kioskApp != null)) { Text(getString(R.string.turn_on)) }
         }
         Section(getString(R.string.what_changes))
         Panel(Modifier.fillMaxWidth()) {
@@ -585,16 +609,8 @@ class MainActivity : ComponentActivity() {
             }
         }
         if (on == profile) Text(getString(R.string.turn_the_mode_off_to), Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if ("Own home screen" !in off) { Section(getString(R.string.apps)); HomePicker(profile) }
-        if (profile == Profile.KIOSK) {
-            Section(getString(R.string.pin_one_app))
-            if (realmeGestures()) Text(
-                // checked on the Realme XT: a swipe never reaches a third-party home screen
-                getString(R.string.on_this_phone_a_swipe),
-                Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            PinPicker(on == profile, askPin = "Ask for PIN to unpin" !in off)
-        }
+        if (OWN_HOME in profile.options && OWN_HOME !in off) { Section(getString(R.string.apps)); HomePicker(profile) }
+        if (profile == Profile.KIOSK) { Section(getString(R.string.kiosk_app)); KioskAppPicker(askPin = "Ask for PIN to unpin" !in off) }
     }
 
     /** Which apps the mode's home screen shows; editable any time, the home screen rereads it on return. */
@@ -617,8 +633,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
             val names = all.filter { it.first in picked }.joinToString { it.second }
-            ListRow(if (profile == Profile.E_READER) getString(R.string.other_apps) else getString(R.string.apps_on_the_home_screen), names.ifEmpty { getString(R.string.none_chosen) }) { open = true }
-            if (open) ListDialog(if (profile == Profile.E_READER) getString(R.string.other_apps) else getString(R.string.apps_on_the_home_screen), null, { open = false }, search = true) { q ->
+            ListRow(getString(R.string.other_apps), names.ifEmpty { getString(R.string.none_chosen) }) { open = true }
+            if (open) ListDialog(getString(R.string.other_apps), null, { open = false }, search = true) { q ->
                 items(all.filter { it.matches(q) }, key = { it.first }) { (pkg, label) ->
                     Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).toggleable(pkg in picked, role = Role.Checkbox) { if (it) picked += pkg else picked -= pkg; modes.setApps(profile, picked.toSet()) }, verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(pkg in picked, null); Spacer(Modifier.width(12.dp)); AppIcon(pkg); Text(label, Modifier.padding(start = 12.dp))
@@ -632,56 +648,39 @@ class MainActivity : ComponentActivity() {
      * Gesture navigation per Android's navigation_mode (2), or per realme/Oppo's own switch
      * (hide_navigationbar_enable > 0), which they use instead: there navigation_mode stays 0.
      */
-    /** realme/Oppo gesture navigation: their launcher handles the swipes, whatever home screen is set. */
-    private fun realmeGestures() = Settings.Secure.getInt(contentResolver, "hide_navigationbar_enable", 0) > 0
-
     private fun usesGestures() = Settings.Secure.getInt(contentResolver, "navigation_mode", 0) == 2 ||
         Settings.Secure.getInt(contentResolver, "hide_navigationbar_enable", 0) > 0
 
     private fun unpinHow() = if (usesGestures()) getString(R.string.swipe_up_from_the_bottom) else getString(R.string.touch_and_hold_back_and)
 
-    /** Pinning hides MonoMode, so it is the last step: pin, then switch Wireless debugging off. */
-    @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+    /** Kiosk's one app, as a startable component and its name; null until chosen (or when it was uninstalled). */
+    private fun kioskApp(): Pair<String, String>? = modes.apps(Profile.KIOSK).firstNotNullOfOrNull { pkg ->
+        packageManager.getLaunchIntentForPackage(pkg)?.component?.flattenToShortString()?.let { it to label(pkg) }
+    }
+
+    /** Which app Kiosk pins; changeable only while Kiosk is off, like its other options. */
     @Composable
-    private fun PinPicker(kioskOn: Boolean, askPin: Boolean) {
-        var apps by remember { mutableStateOf<List<Pair<String, String>>?>(null) }
-        Column {
-            // always shown, so it is clear pinning exists; it needs Kiosk on, which enables screen pinning
-            ListRow(getString(R.string.pin_an_app), if (kioskOn) getString(R.string.one_app_fills_the_screen) else getString(R.string.turn_kiosk_on_first_then)) {
-                if (kioskOn) run {
-                    // pin() starts a component; the launch intent names the app's own start screen
-                    apps = launcherApps(applicationContext).mapNotNull { (pkg, label) ->
-                        packageManager.getLaunchIntentForPackage(pkg)?.component?.flattenToShortString()?.let { it to label }
+    private fun KioskAppPicker(askPin: Boolean) {
+        var choose by remember { mutableStateOf(false) }
+        var chosen by remember { mutableStateOf(kioskApp()) }
+        val kioskOff = ps.activeMode != Profile.KIOSK
+        ListRow(getString(R.string.app_to_pin), chosen?.second ?: getString(R.string.choose_the_app_kiosk_pins)) { if (kioskOff) choose = true }
+        // what pinning does, up front: people were surprised by the PIN prompt and by debugging being off afterwards
+        Text(
+            getString(if (askPin) R.string.to_unpin_asks_pin else R.string.to_unpin, unpinHow()) + " " + getString(R.string.pinning_switches_off_wireless_debugging),
+            Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (choose) {
+            val all = remember { launcherApps(this) }
+            ListDialog(getString(R.string.app_to_pin), null, { choose = false }, search = true) { q ->
+                items(all.filter { it.matches(q) }, key = { it.first }) { (pkg, label) ->
+                    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).selectable(pkg == chosen?.first?.substringBefore("/"), role = Role.RadioButton) {
+                        modes.setApps(Profile.KIOSK, setOf(pkg)); chosen = kioskApp(); choose = false
+                    }, verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(pkg == chosen?.first?.substringBefore("/"), null); Spacer(Modifier.width(12.dp)); AppIcon(pkg); Text(label, Modifier.padding(start = 12.dp))
                     }
                 }
             }
-            // what pinning does, up front: people were surprised by the PIN prompt and by debugging being off afterwards
-            Text(
-                getString(R.string.pinning_turns_off_wireless_debugging, unpinHow()),
-                Modifier.padding(start = 8.dp, end = 8.dp, top = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        apps?.let { list ->
-            // Material bottom sheet: the list rises from where the thumb is, with how to unpin above it
-            var q by remember { mutableStateOf("") }
-            ModalBottomSheet({ apps = null }) { Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(getString(R.string.pin_an_app), Modifier.padding(horizontal = 8.dp).semantics { heading() }, style = MaterialTheme.typography.headlineSmall)
-                Text(getString(R.string.the_app_fills_the_screen), Modifier.padding(horizontal = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium).background(MaterialTheme.colorScheme.primaryContainer).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Icon(Icons.Outlined.Info, null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
-                    Text(getString(if (askPin) R.string.to_unpin_asks_pin else R.string.to_unpin, unpinHow()), color = MaterialTheme.colorScheme.onPrimaryContainer)
-                }
-                OutlinedTextField(q, { q = it }, Modifier.fillMaxWidth(), placeholder = { Text(getString(R.string.search)) }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true, shape = MaterialTheme.shapes.large)
-                LazyColumn(Modifier.heightIn(max = 480.dp)) { items(list.filter { it.matches(q) }) { (component, label) ->
-                    Row(
-                        Modifier.fillMaxWidth().heightIn(min = 56.dp).clip(MaterialTheme.shapes.medium).clickable(enabled = ps.busy == null) {
-                            apps = null
-                            ph.pin(component, label)
-                        },
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) { Spacer(Modifier.width(8.dp)); AppIcon(component.substringBefore("/")); Text(label, Modifier.padding(start = 16.dp), style = MaterialTheme.typography.bodyLarge) }
-                } }
-            } }
         }
     }
 

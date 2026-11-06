@@ -56,6 +56,8 @@ dependencies {
 
     androidTestImplementation(platform("androidx.compose:compose-bom:2026.09.00"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    // Google's Accessibility Test Framework behind enableAccessibilityChecks / tryPerformAccessibilityChecks
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4-accessibility")
     debugImplementation("androidx.compose.ui:ui-test-manifest") // the empty activity createComposeRule hosts content in
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
