@@ -12,6 +12,11 @@
          one broad permission; nothing leaves the phone (ADR 0002). -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
 
+    <!-- E-reader mode: the built-in reader lists the EPUB books on shared storage, and "Show the current book"
+         reads KOReader's last book from its own files there. Off until the user allows it in Settings; read only,
+         nothing leaves the phone. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"

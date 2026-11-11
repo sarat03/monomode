@@ -2,11 +2,8 @@ package monomode.engine
 
 import java.io.File
 
-/** Known reading apps, best first; used for Continue reading when the user has not chosen one. */
-private val READERS = listOf(
-    "org.readera", "org.readera.premium", "org.koreader.launcher", "com.flyersoft.moonreader", "com.flyersoft.moonreaderp",
-    "com.foobnix.pdf.reader", "com.amazon.kindle", "com.kobobooks.android", "com.google.android.apps.books",
-)
+/** MonoMode's own reader, named by MonoMode's package; the reading app until the user chooses another. */
+val BUILT_IN_READER = MODE_HOME.substringBefore('/')
 
 /**
  * Everything about the modes: which one is on, what the user chose for each, and turning them on
@@ -33,9 +30,9 @@ class Modes(private val dir: File, private val store: Store) {
     fun apps(p: Profile) = store.strings("apps.${p.name}")
     fun setApps(p: Profile, pkgs: Set<String>) = store.putStrings("apps.${p.name}", pkgs)
 
-    /** The e-reader's Continue reading app: the chosen one, else the first known reader in [installed], else null. */
-    fun reader(installed: Collection<String>): String? =
-        store.string("reader")?.takeIf { it in installed } ?: READERS.firstOrNull { it in installed }
+    /** The e-reader's Continue reading app: the chosen one while it is still [installed], else MonoMode's own reader. */
+    fun reader(installed: Collection<String>): String =
+        store.string("reader")?.takeIf { it in installed } ?: BUILT_IN_READER
     fun setReader(pkg: String) = store.putString("reader", pkg)
 
     fun turnOn(sh: Shell, p: Profile) {

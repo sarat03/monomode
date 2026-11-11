@@ -3,10 +3,27 @@ package io.github.sarat03.monomode
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.ActivityNotFoundException
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
+import android.view.View
+import android.net.Uri
 import android.os.BatteryManager
 import android.os.Bundle
+import android.os.Environment
+import android.os.StrictMode
+import android.webkit.MimeTypeMap
+import androidx.compose.ui.layout.ContentScale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import monomode.engine.Book
+import monomode.engine.BUILT_IN_READER
+import monomode.engine.KOREADER
+import monomode.engine.koreaderBook
+import java.io.File
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import androidx.activity.ComponentActivity
@@ -45,12 +62,20 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -74,7 +99,16 @@ class HomeActivity : ComponentActivity() {
 
     private var apps by mutableStateOf<List<App>>(emptyList())
     private var mode by mutableStateOf<Profile?>(null)
+    /** The reading app chosen instead of MonoMode's own reader; null while its own reader is used. */
     private var reader by mutableStateOf<App?>(null)
+    /** KOReader's last book and its cover, reread on every return to this screen; null for other reading apps or without All files access. */
+    private var book by mutableStateOf<Book?>(null)
+    private var cover by mutableStateOf<ImageBitmap?>(null)
+    private var resumes by mutableStateOf(0)
+    /** The book open in MonoMode's reader, shown in place of the library; null for the library. */
+    private var reading by mutableStateOf<String?>(null)
+    /** The reader's Settings screen is showing, in place of the library. */
+    private var settings by mutableStateOf(false)
     /** Drawn once per app; the screen reloads on every return from an app. shortcut: an updated app keeps its old icon until the home screen restarts. */
     private val icons = HashMap<String, ImageBitmap>()
     private var now by mutableStateOf(Date())
@@ -87,9 +121,17 @@ class HomeActivity : ComponentActivity() {
         Appearance.load(this)
         // a home screen ignores Back; finishing would reveal the phone's usual launcher underneath
         onBackPressedDispatcher.addCallback(this) {}
+        // KOReader opens a book from a file:// link and reads the file with its own storage access, so nothing is
+        // shared through the link; Android's default policy would crash this app for sending one
+        StrictMode.setVmPolicy(StrictMode.VmPolicy.LAX)
         setContent {
             LaunchedEffect(Unit) { while (true) { now = Date(); batteryLevel = battery(); delay(30_000) } }
-            if (mode == Profile.E_READER) Reader() else KioskHome(apps, now, batteryLevel, { open(it) }, ::openMonoMode)
+            LaunchedEffect(resumes, reader?.pkg) {
+                val found = if (reader?.pkg == KOREADER && Environment.isExternalStorageManager()) withContext(Dispatchers.IO) { koreaderBook(Environment.getExternalStorageDirectory()) } else null
+                if (found?.path != book?.path) cover = found?.let { withContext(Dispatchers.IO) { loadCover(it.path) } }
+                book = found
+            }
+            if (mode == Profile.E_READER) { if (reader == null) ReaderHome() else Reader() } else KioskHome(apps, now, batteryLevel, { open(it) }, ::openMonoMode)
         }
         // full screen, after setContent (the window has no decor before it on Android 11): the home screens draw their own clock; a swipe from the top shows the bars briefly
         window.insetsController?.apply {
@@ -101,6 +143,7 @@ class HomeActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         homePressed = true
+        reading = null; settings = false // Home goes to the library, as on an e-reader
     }
 
     override fun onResume() {
@@ -116,8 +159,27 @@ class HomeActivity : ComponentActivity() {
         reader = all.firstOrNull { it.first == readerPkg }?.let(::app)
         apps = all.filter { it.first in picked && (mode != Profile.E_READER || it.first != readerPkg) }.map(::app)
         if (mode == Profile.KIOSK && apps.size == 1 && homePressed) open(apps[0].pkg)
+        // an e-reader has no launcher: Home is the reading app itself; Back from it shows this screen, the way out
+        if (mode == Profile.E_READER && readerPkg != BUILT_IN_READER && homePressed) open(readerPkg)
         homePressed = false
+        resumes++
+        applyColour()
     }
+
+    /** "Colour" off in the reader's settings: this screen is drawn through a filter that removes all colour. Only MonoMode's own reader; the phone-wide grey is the mode's own option. */
+    private fun applyColour() {
+        val grey = mode == Profile.E_READER && reader == null && !Shelf.colour(this)
+        window.decorView.setLayerType(if (grey) View.LAYER_TYPE_HARDWARE else View.LAYER_TYPE_NONE, if (grey) Paint().apply { colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) }) } else null)
+    }
+
+    /** Opens [b] in KOReader at the page it was left on; KOReader alone if it turns the book down. */
+    private fun open(b: Book) = try {
+        startActivity(
+            Intent(Intent.ACTION_VIEW).setPackage(KOREADER).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                // KOReader's filter wants a type; octet-stream is on its list for suffixes Android does not know
+                .setDataAndType(Uri.fromFile(File(b.path)), MimeTypeMap.getSingleton().getMimeTypeFromExtension(File(b.path).extension.lowercase()) ?: "application/octet-stream")
+        )
+    } catch (e: ActivityNotFoundException) { open(KOREADER) }
 
     // each app in its own task, like any launcher: Home clears this screen's task, and anything started
     // inside it would be closed too (MonoMode's screen closing ends the session and turns off Wireless debugging)
@@ -131,7 +193,39 @@ class HomeActivity : ComponentActivity() {
     private fun battery(): Int =
         registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
 
-    /** Kindle/Kobo style: paper white, black serif text, no colour or motion, so it suits the grayscale screen. */
+    /**
+     * E-reader with MonoMode's own reader: the home screen is the library itself, as on a Kindle or Kobo, with no
+     * launcher in between. Under the books: the other apps chosen for the mode, and the way back to MonoMode.
+     * A book opens in place, on this same screen: a separate screen would start with Android's app-opening animation.
+     */
+    @Composable
+    private fun ReaderHome() = AppTheme {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            val path = reading
+            if (path != null) key(path) { Reading(path) { reading = null; resumes++ } }
+            // the other apps and MonoMode live in Settings, not under the books: a growing library would push them out of reach
+            else if (settings) ReaderSettings(::applyColour, { settings = false }) {
+                if (apps.isNotEmpty()) Text(getString(R.string.other_apps), Modifier.padding(top = 12.dp).semantics { heading() }, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                for (a in apps) Text(a.label, Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { open(a.pkg) }.padding(vertical = 12.dp), style = MaterialTheme.typography.bodyLarge)
+                Text(getString(R.string.monomode), Modifier.padding(top = 12.dp).semantics { heading() }, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                Column(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable { openMonoMode() }.padding(vertical = 8.dp)) {
+                    Text(getString(R.string.open_monomode), style = MaterialTheme.typography.bodyLarge)
+                    Text(getString(R.string.leave_e_reader_or_change), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            else Column(Modifier.safeDrawingPadding()) {
+                Row(Modifier.padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(now), style = MaterialTheme.typography.labelLarge)
+                    Spacer(Modifier.weight(1f))
+                    Text("$batteryLevel%", style = MaterialTheme.typography.labelLarge)
+                    IconButton({ settings = true }) { Icon(Icons.Outlined.Settings, getString(R.string.settings)) }
+                }
+                Library(resumes) { reading = it }
+            }
+        }
+    }
+
+    /** With another reading app chosen, the screen behind it. Kindle/Kobo style: paper white, black serif text, no colour or motion, so it suits the grayscale screen. */
     @Composable
     private fun Reader() {
         val dark = isDark()
@@ -148,16 +242,18 @@ class HomeActivity : ComponentActivity() {
             HorizontalDivider(Modifier.padding(vertical = 8.dp), color = ink)
             Text(DateFormat.getDateInstance(DateFormat.FULL).format(now), color = ink, fontFamily = serif, fontSize = 18.sp)
             Spacer(Modifier.height(40.dp))
-            if (main == null) Text(getString(R.string.no_reading_app_found_install), color = ink, fontFamily = serif, fontSize = 20.sp)
-            else Row(
-                Modifier.fillMaxWidth().border(2.dp, ink).clickable { open(main.pkg) }.padding(20.dp),
+            if (main != null) Row(
+                Modifier.fillMaxWidth().border(2.dp, ink).clickable { book?.let { open(it) } ?: open(main.pkg) }.padding(20.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically,
             ) {
-                // a book outline, like the cover slot on a Kobo or Kindle home screen
-                Box(Modifier.size(56.dp, 80.dp).border(1.5.dp, ink))
+                val b = book
+                // the book's cover, else an outline, like the cover slot on a Kobo or Kindle home screen
+                cover?.let { Image(it, null, Modifier.size(56.dp, 80.dp).border(1.5.dp, ink), contentScale = ContentScale.Crop) }
+                    ?: Box(Modifier.size(56.dp, 80.dp).border(1.5.dp, ink))
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(getString(R.string.continue_reading), color = ink, fontFamily = serif, fontSize = 22.sp, maxLines = 1)
-                    Text(main.label, color = ink, fontFamily = serif, fontSize = 18.sp)
+                    if (b != null) Text(b.title, color = ink, fontFamily = serif, fontSize = 18.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(if (b?.percent != null) "${b.percent}% · ${main.label}" else main.label, color = ink, fontFamily = serif, fontSize = if (b != null) 15.sp else 18.sp)
                 }
             }
             Spacer(Modifier.height(32.dp))

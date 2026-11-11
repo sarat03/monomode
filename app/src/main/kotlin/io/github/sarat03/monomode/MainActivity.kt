@@ -2,7 +2,9 @@ package io.github.sarat03.monomode
 
 import android.Manifest
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -79,6 +81,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import monomode.engine.Finding
+import monomode.engine.KOREADER
 import monomode.engine.Level
 import monomode.engine.Method
 import monomode.engine.Profile
@@ -135,8 +138,15 @@ class MainActivity : ComponentActivity() {
     // from a mode home screen: open the mode that is on, or Home when none is
     private fun openPage(i: Intent?) { i?.getIntExtra(Page.EXTRA, -1)?.takeIf { it >= 0 }?.let { tab = it; if (it == Page.MODES) openMode = modes.active } }
 
+    /** Set by "Enter e-reader": open the reader as soon as the mode is on. */
+    private var entering = false
+
+    /** All files access, reread on return from its Settings page. */
+    private var allFiles by mutableStateOf(false)
+
     override fun onResume() {
         super.onResume()
+        allFiles = Environment.isExternalStorageManager()
         paired = Pairing.isPaired(this)
         // paired and Wireless debugging on: connects and checks straight away, no Start button
         ph.refresh(paired)
@@ -567,8 +577,13 @@ class MainActivity : ComponentActivity() {
                 ph.turnOff()
             }, enabled = ps.busy == null, colors = ButtonDefaults.buttonColors(t.fg, t.bg)) { Text(getString(R.string.turn_off)) }
             else Button({
+                entering = profile == Profile.E_READER
                 ph.turnOn(profile)
-            }, enabled = ps.busy == null && on == null) { Text(getString(R.string.turn_on)) }
+            }, enabled = ps.busy == null && on == null) { Text(getString(if (profile == Profile.E_READER) R.string.enter_e_reader else R.string.turn_on)) }
+        }
+        // straight into the reader once the mode is on, as switching on an e-reader does; named directly, so it also works with "Own home screen" off
+        LaunchedEffect(on) {
+            if (entering && on == Profile.E_READER) { entering = false; startActivity(Intent(this@MainActivity, HomeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
         }
         Section(getString(R.string.what_changes))
         Panel(Modifier.fillMaxWidth()) {
@@ -605,15 +620,20 @@ class MainActivity : ComponentActivity() {
         val all = remember { launcherApps(this) }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (profile == Profile.E_READER) {
+                val readers = remember { listOf(packageName to getString(R.string.monomode_reader)) + all }
                 var reader by remember { mutableStateOf(modes.reader(all.map { it.first })) }
                 var choose by remember { mutableStateOf(false) }
-                ListRow(getString(R.string.reading_app), all.firstOrNull { it.first == reader }?.second ?: getString(R.string.none_found_choose_one)) { choose = true }
+                ListRow(getString(R.string.reading_app), readers.first { it.first == reader }.second) { choose = true }
                 if (choose) ListDialog(getString(R.string.reading_app), getString(R.string.opens_from_continue_reading), { choose = false }, search = true) { q ->
-                    items(all.filter { it.matches(q) }, key = { it.first }) { (pkg, label) ->
+                    items(readers.filter { it.matches(q) }, key = { it.first }) { (pkg, label) ->
                         Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).selectable(pkg == reader, role = Role.RadioButton) { reader = pkg; modes.setReader(pkg); choose = false }, verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(pkg == reader, null); Spacer(Modifier.width(12.dp)); AppIcon(pkg); Text(label, Modifier.padding(start = 12.dp))
                         }
                     }
+                }
+                // KOReader's last book is in its own files on shared storage; only All files access can read them
+                if (reader == KOREADER) ListRow(getString(R.string.show_the_current_book), getString(if (allFiles) R.string.title_cover_and_progress_on else R.string.needs_all_files_access)) {
+                    startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
                 }
             }
             val names = all.filter { it.first in picked }.joinToString { it.second }

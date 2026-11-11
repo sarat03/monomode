@@ -59,12 +59,13 @@ class ModesTest {
         assertFailsWith<IllegalStateException> { modes.turnOn(sh, Profile.E_READER) }
     }
 
-    @Test fun `reader is the chosen app, else the first known reader, never another app`() {
-        assertEquals("org.readera", modes.reader(listOf("com.google.android.calendar", "org.koreader.launcher", "org.readera")))
-        assertNull(modes.reader(listOf("com.google.android.calendar")))
+    @Test fun `reader is the chosen app while it is installed, else MonoMode's own reader`() {
+        assertEquals(BUILT_IN_READER, modes.reader(listOf("com.google.android.calendar", "org.koreader.launcher", "org.readera")))
         modes.setReader("org.koreader.launcher")
         assertEquals("org.koreader.launcher", modes.reader(listOf("org.koreader.launcher", "org.readera")))
-        assertEquals("org.readera", modes.reader(listOf("org.readera"))) // chosen one uninstalled
+        assertEquals(BUILT_IN_READER, modes.reader(listOf("org.readera"))) // chosen one uninstalled
+        modes.setReader(BUILT_IN_READER) // chosen back; MonoMode is not in the list of other apps
+        assertEquals(BUILT_IN_READER, modes.reader(listOf("org.koreader.launcher")))
     }
 
     @Test fun `per-mode choices are kept apart`() {
