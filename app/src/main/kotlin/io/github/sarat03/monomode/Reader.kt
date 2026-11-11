@@ -381,6 +381,7 @@ internal fun Reading(path: String, onScreen: () -> Unit, onClose: () -> Unit) {
     // the end of the page counts as read, so the last page of the book is 100%
     val progress = book.progress(chapter, if (pages == 0) target else (page + 1f) / pages)
     val title = book.toc.firstOrNull { it.second.substringBefore('#') == book.spine[chapter] }?.first.orEmpty()
+    val numbered = stringResource(R.string.chapter_d, chapter + 1) // the name of a chapter the contents do not list
     val marked = remember(marks, chapter, page, pages) { pages > 0 && shelf.markOn(path, chapter, page.toFloat() / pages, (page + 1f) / pages) != null }
     fun save() { if (pages > 0) shelf.save(path, chapter, page.toFloat() / pages, book.progress(chapter, (page + 1f) / pages)) }
     fun go(to: Int, at: Float, anchor: String? = null) {
@@ -406,7 +407,7 @@ internal fun Reading(path: String, onScreen: () -> Unit, onClose: () -> Unit) {
     }
     fun toggleMark() {
         if (pages == 0) return
-        shelf.toggleMark(path, chapter, page.toFloat() / pages, (page + 1f) / pages, progress, title.ifEmpty { ctx.getString(R.string.chapter_d, chapter + 1) })
+        shelf.toggleMark(path, chapter, page.toFloat() / pages, (page + 1f) / pages, progress, title.ifEmpty { numbered })
         marks = shelf.marks(path)
     }
     /** A new look means new page breaks: lay the chapter out again and stay at the same place in it. */
