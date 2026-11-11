@@ -10,7 +10,7 @@ class ShelfTest {
     private val shelf = Shelf(object : Shelf.Store {
         override fun get(key: String) = saved[key]
         override fun put(key: String, value: String?) { if (value == null) saved.remove(key) else saved[key] = value }
-    }) { clock }
+    }, { clock }, java.time.ZoneOffset.UTC)
 
     @Test fun `a book's place is remembered with the time it was left, per book`() {
         assertNull(shelf.place("/b/one.epub"))
@@ -31,7 +31,9 @@ class ShelfTest {
     @Test fun `library sort and colour keep their choice`() {
         assertEquals("recent", shelf.sort)
         assertEquals(true, shelf.colour)
-        shelf.sort = "author"; shelf.colour = false
+        assertEquals(false, shelf.grid)
+        shelf.sort = "author"; shelf.colour = false; shelf.grid = true
+        assertEquals(true, shelf.grid)
         assertEquals("author", shelf.sort)
         assertEquals(false, shelf.colour)
     }
@@ -99,5 +101,48 @@ class ShelfTest {
         assertEquals(listOf("why | this\nmatters", ""), shelf.quotes("/b/one.epub").map { it.note })
         shelf.removeQuote("/b/one.epub", shelf.quotes("/b/one.epub")[0])
         assertEquals(listOf("cdef"), shelf.quotes("/b/one.epub").map { it.text })
+    }
+
+    @Test fun `a book can be a favourite and be marked to read or read`() {
+        assertEquals(false, shelf.favourite("/b/one.epub"))
+        assertEquals("", shelf.status("/b/one.epub"))
+        shelf.setFavourite("/b/one.epub", true); shelf.setStatus("/b/one.epub", "toread"); shelf.setStatus("/b/two.epub", "read")
+        assertEquals(listOf(true, "toread", false, "read"), listOf(shelf.favourite("/b/one.epub"), shelf.status("/b/one.epub"), shelf.favourite("/b/two.epub"), shelf.status("/b/two.epub")))
+        shelf.setFavourite("/b/one.epub", false); shelf.setStatus("/b/one.epub", "")
+        assertEquals(listOf(false, ""), listOf(shelf.favourite("/b/one.epub"), shelf.status("/b/one.epub")))
+    }
+
+    @Test fun `collections are named shelves, and a book can stand on several`() {
+        assertEquals(emptyList(), shelf.collections())
+        shelf.setInCollection("Sea", "/b/one.epub", true); shelf.setInCollection("Sea", "/b/two.epub", true); shelf.setInCollection("Again", "/b/one.epub", true)
+        assertEquals(listOf("Again", "Sea"), shelf.collections())
+        assertEquals(setOf("Again", "Sea"), shelf.collectionsOf("/b/one.epub"))
+        assertEquals(setOf("Sea"), shelf.collectionsOf("/b/two.epub"))
+        shelf.setInCollection("Sea", "/b/one.epub", false)
+        assertEquals(setOf("Again"), shelf.collectionsOf("/b/one.epub"))
+        shelf.removeCollection("Again")
+        assertEquals(listOf("Sea"), shelf.collections())
+        assertEquals(emptySet(), shelf.collectionsOf("/b/one.epub"))
+    }
+
+    @Test fun `reading time is the time between page turns, a long pause counting as five minutes`() {
+        clock = 0L; shelf.opened("/b/one.epub")
+        clock = 60_000L; shelf.pageTurned("/b/one.epub")
+        clock = 100_000L; shelf.pageTurned("/b/one.epub")
+        assertEquals(100L, shelf.timeRead("/b/one.epub"))
+        clock += 45 * 60_000L; shelf.pageTurned("/b/one.epub") // the phone was put down
+        assertEquals(400L, shelf.timeRead("/b/one.epub"))
+        assertEquals(0L, shelf.timeRead("/b/two.epub"))
+    }
+
+    @Test fun `reading time is also kept per day, for all books together`() {
+        val day = 24 * 3600_000L
+        clock = 10 * day; shelf.opened("/b/one.epub")
+        clock += 120_000L; shelf.pageTurned("/b/one.epub")
+        shelf.opened("/b/two.epub")
+        clock += 30_000L; shelf.pageTurned("/b/two.epub")
+        clock = 11 * day + 5_000L; shelf.opened("/b/one.epub")
+        clock += 60_000L; shelf.pageTurned("/b/one.epub")
+        assertEquals(mapOf("1970-01-11" to 150L, "1970-01-12" to 60L), shelf.timeByDay())
     }
 }

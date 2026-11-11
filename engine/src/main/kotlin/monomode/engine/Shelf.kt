@@ -1,6 +1,8 @@
 package monomode.engine
 
 import java.net.URLDecoder
+import java.time.Instant
+import java.time.ZoneId
 import java.net.URLEncoder
 
 /** Where a book was left: [inChapter] and [progress] (of the whole book) are 0..1, [at] is when, in epoch milliseconds. */
@@ -28,7 +30,7 @@ data class Look(
  * What MonoMode's reader remembers, keyed by the book's path. Values are short strings in [store]:
  * SharedPreferences on the phone, a map in tests.
  */
-class Shelf(private val store: Store, private val now: () -> Long = System::currentTimeMillis) {
+class Shelf(private val store: Store, private val now: () -> Long = System::currentTimeMillis, private val zone: ZoneId = ZoneId.systemDefault()) {
     interface Store {
         fun get(key: String): String?
         /** null removes the key. */
@@ -83,6 +85,11 @@ class Shelf(private val store: Store, private val now: () -> Long = System::curr
         get() = store.get("sort") ?: "recent"
         set(v) = store.put("sort", v)
 
+    /** The library as a grid of covers instead of a list. */
+    var grid: Boolean
+        get() = store.get("grid") == "true"
+        set(v) = store.put("grid", v.toString())
+
     /** False shows the reader in grey, like e-paper. */
     var colour: Boolean
         get() = store.get("colour") != "false"
@@ -118,4 +125,53 @@ class Shelf(private val store: Store, private val now: () -> Long = System::curr
     fun addQuote(path: String, chapter: Int, start: Int, end: Int, text: String) = putQuotes(path, quotes(path) + Quote(chapter, start, end, text, "", now()))
     fun setNote(path: String, quote: Quote, note: String) = putQuotes(path, quotes(path).map { if (it == quote) it.copy(note = note) else it })
     fun removeQuote(path: String, quote: Quote) = putQuotes(path, quotes(path) - quote)
+
+    fun favourite(path: String) = store.get("fav:$path") == "true"
+    fun setFavourite(path: String, on: Boolean) = store.put("fav:$path", if (on) "true" else null)
+
+    /** "" for none, "toread" or "read". */
+    fun status(path: String) = store.get("status:$path").orEmpty()
+    fun setStatus(path: String, status: String) = store.put("status:$path", status.ifEmpty { null })
+
+    // "collections" holds the names, "in:<name>" the paths of its books; one per line
+    private fun lines(key: String) = store.get(key)?.lines()?.filter { it.isNotEmpty() }.orEmpty()
+    /** The names of the reader's own shelves, in order. */
+    fun collections(): List<String> = lines("collections").sorted()
+    fun collectionsOf(path: String): Set<String> = collections().filter { path in lines("in:$it") }.toSet()
+    /** Puts the book on the shelf [name], making the shelf if it is new, or takes it off. An emptied shelf stays until removed. */
+    fun setInCollection(name: String, path: String, on: Boolean) {
+        store.put("collections", (lines("collections").toSet() + name).joinToString("\n"))
+        store.put("in:$name", (if (on) lines("in:$name").toSet() + path else lines("in:$name").toSet() - path).joinToString("\n").ifEmpty { null })
+    }
+    fun removeCollection(name: String) {
+        store.put("collections", (lines("collections") - name).joinToString("\n").ifEmpty { null })
+        store.put("in:$name", null)
+    }
+
+    /** The book being read and when its page was last turned; kept only while this Shelf lives. */
+    private var reading: Pair<String, Long>? = null
+
+    /** Starts the clock for a book that has just been opened. */
+    fun opened(path: String) { reading = path to now() }
+
+    /**
+     * Counts the time since the last page turn (or since [opened]) as reading time: at most five minutes,
+     * so a phone put down with the book open does not count as an afternoon's reading.
+     */
+    fun pageTurned(path: String) {
+        val t = now()
+        reading?.takeIf { it.first == path }?.let { (_, last) ->
+            val seconds = ((t - last) / 1000).coerceIn(0, 300)
+            store.put("time:$path", (timeRead(path) + seconds).toString())
+            val day = Instant.ofEpochMilli(t).atZone(zone).toLocalDate().toString()
+            store.put("days", (timeByDay() + (day to (timeByDay()[day] ?: 0L) + seconds)).entries.joinToString(";") { "${it.key}=${it.value}" })
+        }
+        reading = path to t
+    }
+
+    /** Seconds spent reading the book. */
+    fun timeRead(path: String): Long = store.get("time:$path")?.toLongOrNull() ?: 0L
+
+    /** Seconds read on each day ("2026-11-11"), all books together, oldest day first. */
+    fun timeByDay(): Map<String, Long> = store.get("days").orEmpty().split(';').mapNotNull { e -> e.split('=').takeIf { it.size == 2 }?.let { it[0] to (it[1].toLongOrNull() ?: 0L) } }.sortedBy { it.first }.toMap()
 }

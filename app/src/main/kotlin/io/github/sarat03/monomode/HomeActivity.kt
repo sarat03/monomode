@@ -17,6 +17,7 @@ import android.net.Uri
 import android.os.BatteryManager
 import android.os.Bundle
 import android.os.Environment
+import android.system.Os
 import android.os.StrictMode
 import android.webkit.MimeTypeMap
 import androidx.compose.ui.layout.ContentScale
@@ -122,6 +123,7 @@ class HomeActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Appearance.load(this)
+        reading = bookFrom(intent)
         // a home screen ignores Back; finishing would reveal the phone's usual launcher underneath
         onBackPressedDispatcher.addCallback(this) {}
         // KOReader opens a book from a file:// link and reads the file with its own storage access, so nothing is
@@ -134,7 +136,8 @@ class HomeActivity : ComponentActivity() {
                 if (found?.path != book?.path) cover = found?.let { withContext(Dispatchers.IO) { loadCover(it.path) } }
                 book = found
             }
-            if (mode == Profile.E_READER) { if (reader == null) ReaderHome() else Reader() } else KioskHome(apps, now, batteryLevel, { open(it) }, ::openMonoMode)
+            // a book handed over by another app ("Open with") is read here whatever mode is on
+            if (reading != null || mode == Profile.E_READER) { if (reading != null || reader == null) ReaderHome() else Reader() } else KioskHome(apps, now, batteryLevel, { open(it) }, ::openMonoMode)
         }
         // full screen, after setContent (the window has no decor before it on Android 11): the home screens draw their own clock; a swipe from the top shows the bars briefly
         window.insetsController?.apply {
@@ -145,6 +148,8 @@ class HomeActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        val handed = bookFrom(intent)
+        if (handed != null) { reading = handed; return }
         homePressed = true
         reading = null; settings = false // Home goes to the library, as on an e-reader
     }
@@ -161,6 +166,7 @@ class HomeActivity : ComponentActivity() {
         val readerPkg = modes.reader(all.map { it.first })
         reader = all.firstOrNull { it.first == readerPkg }?.let(::app)
         apps = all.filter { it.first in picked && (mode != Profile.E_READER || it.first != readerPkg) }.map(::app)
+        if (reading != null) homePressed = false // a book was handed over: show it, not the mode's single app
         if (mode == Profile.KIOSK && apps.size == 1 && homePressed) open(apps[0].pkg)
         // an e-reader has no launcher: Home is the reading app itself; Back from it shows this screen, the way out
         if (mode == Profile.E_READER && readerPkg != BUILT_IN_READER && homePressed) open(readerPkg)
@@ -176,13 +182,28 @@ class HomeActivity : ComponentActivity() {
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean = turnsPage(keyCode) || super.onKeyUp(keyCode, event) // or the phone still beeps
 
     /**
+     * The file of a book another app asks to have opened ("Open with"), or null for any other intent.
+     * A file:// link names it. A content:// link does not, but with All files access the real file can be read
+     * all the same once its path is known, and the open descriptor tells; failing that, the book is copied in.
+     */
+    private fun bookFrom(intent: Intent): String? {
+        val uri = intent.data?.takeIf { intent.action == Intent.ACTION_VIEW } ?: return null
+        if (uri.scheme == "file") return uri.path
+        return try {
+            contentResolver.openFileDescriptor(uri, "r")?.use { fd -> Os.readlink("/proc/self/fd/${fd.fd}").takeIf { File(it).canRead() } }
+                // shortcut: a copy is another file to the reader, so its place is kept apart from the original's
+                ?: File(cacheDir, "opened-${uri.toString().hashCode()}.epub").also { copy -> contentResolver.openInputStream(uri)!!.use { from -> copy.outputStream().use { from.copyTo(it) } } }.path
+        } catch (e: Exception) { null } // no longer there, or not ours to read: nothing to open
+    }
+
+    /**
      * The reader's own choices about the screen, applied to this window only and only for MonoMode's own reader:
      * grey (drawn through a filter that removes all colour; the phone-wide grey is the mode's own option),
      * brightness, orientation, and staying on while a book is open.
      */
     private fun applyScreen() {
         val shelf = Records.shelf(this)
-        val own = mode == Profile.E_READER && reader == null
+        val own = reading != null || (mode == Profile.E_READER && reader == null)
         val grey = own && !shelf.colour
         window.decorView.setLayerType(if (grey) View.LAYER_TYPE_HARDWARE else View.LAYER_TYPE_NONE, if (grey) Paint().apply { colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) }) } else null)
         window.attributes = window.attributes.apply { screenBrightness = (if (own) shelf.brightness else null) ?: WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
@@ -224,7 +245,8 @@ class HomeActivity : ComponentActivity() {
     private fun ReaderHome() = AppTheme {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             val path = reading
-            if (path != null) key(path) { Reading(path, ::applyScreen) { reading = null; resumes++; applyScreen() } }
+            // outside E-reader mode there is no library behind a book that was handed over: closing it leaves
+            if (path != null) key(path) { Reading(path, ::applyScreen) { reading = null; resumes++; applyScreen(); if (mode != Profile.E_READER) finish() } }
             // the other apps and MonoMode live in Settings, not under the books: a growing library would push them out of reach
             else if (settings) ReaderSettings(::applyScreen, { settings = false }) {
                 if (apps.isNotEmpty()) Text(getString(R.string.other_apps), Modifier.padding(top = 12.dp).semantics { heading() }, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)

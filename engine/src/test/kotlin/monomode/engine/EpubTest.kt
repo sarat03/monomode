@@ -115,4 +115,19 @@ class EpubTest {
         assertNull(b.note("OEBPS/text/b.xhtml#missing"))
         assertNull(b.note("OEBPS/text/b.xhtml"))
     }
+
+    @Test fun `reads the description and the series a book belongs to, as Calibre or EPUB 3 write it`() {
+        Epub(epub("<package><metadata><dc:title>T</dc:title><dc:description>&lt;p&gt;A crew crosses &amp;amp; says little.&lt;/p&gt;</dc:description>" +
+            "<meta name=\"calibre:series\" content=\"Grey Water\"/><meta content=\"2.5\" name=\"calibre:series_index\"/></metadata><manifest/></package>")).use { b ->
+            assertEquals("A crew crosses & says little.", b.description)
+            assertEquals("Grey Water", b.series)
+            assertEquals(2.5f, b.seriesIndex)
+        }
+        Epub(epub("<package><metadata><meta property=\"belongs-to-collection\" id=\"c1\">Tides</meta><meta refines=\"#c1\" property=\"group-position\">3</meta></metadata><manifest/></package>")).use { b ->
+            assertEquals("Tides", b.series)
+            assertEquals(3f, b.seriesIndex)
+            assertEquals("", b.description)
+        }
+        Epub(epub(two)).use { b -> assertEquals("", b.series); assertNull(b.seriesIndex) }
+    }
 }

@@ -26,10 +26,14 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
@@ -48,6 +52,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
@@ -56,6 +61,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
@@ -114,7 +120,13 @@ import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import monomode.engine.BookInfo
 import monomode.engine.Epub
+import monomode.engine.groups
+import monomode.engine.members
+import monomode.engine.onList
+import java.time.LocalDate
+import android.text.format.Formatter
 import monomode.engine.Hit
 import monomode.engine.Quote
 import monomode.engine.Tap
@@ -123,7 +135,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
 import monomode.engine.Look
-import monomode.engine.Place
 import monomode.engine.Shelf
 import java.text.DateFormat
 import java.util.Date
@@ -251,11 +262,14 @@ internal fun ReaderSettings(onScreen: () -> Unit, onBack: () -> Unit, more: @Com
     }
 }
 
-private class Entry(val path: String, val title: String, val author: String, val place: Place?)
+/** A length of time as "2 h 05 min", "12 min" or "40 s". */
+@Composable
+private fun span(seconds: Long) = if (seconds >= 3600) stringResource(R.string.time_h_min, seconds / 3600, seconds % 3600 / 60) else if (seconds >= 60) stringResource(R.string.time_min, seconds / 60) else stringResource(R.string.time_s, seconds)
 
 /**
- * Every EPUB on the phone, as e-reader apps lay a library out: the book being read on top under
- * "Continue reading", then the rest with a search box and a sort order.
+ * The library, as e-reader apps lay one out: the book being read on top under "Continue reading", then every EPUB
+ * on the phone. The row of chips narrows it to a reading list, or groups it by author, series, collection or
+ * folder; under them a search box, the sort order and list or grid. Holding a book (or its ⋮) opens its details.
  * Rescans whenever [resumes] changes.
  */
 @Composable
@@ -263,62 +277,161 @@ internal fun Library(resumes: Int, onOpen: (String) -> Unit) {
     val ctx = LocalContext.current
     val shelf = remember { Records.shelf(ctx) }
     val access = remember(resumes) { Environment.isExternalStorageManager() }
-    var books by remember { mutableStateOf<List<Entry>?>(null) }
+    var books by remember { mutableStateOf<List<BookInfo>?>(null) }
+    /** Counted up when a book's lists or shelves change or it is deleted, to read the library again. */
+    var changed by remember { mutableStateOf(0) }
+    var view by remember { mutableStateOf("all") }
+    var group by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
     var sort by remember { mutableStateOf(shelf.sort) }
+    var grid by remember { mutableStateOf(shelf.grid) }
+    var detail by remember { mutableStateOf<BookInfo?>(null) }
+    val root = Environment.getExternalStorageDirectory()
     // shortcut: rescans on every return; fine for hundreds of books, cache the list if a library gets slow
-    LaunchedEffect(resumes) {
+    LaunchedEffect(resumes, changed) {
         if (access) books = withContext(Dispatchers.IO) {
-            findEpubs(Environment.getExternalStorageDirectory()).mapNotNull { f ->
-                try { Epub(f).use { Entry(f.path, it.title, it.author, shelf.place(f.path)) } } catch (e: IOException) { null }
+            findEpubs(root).mapNotNull { f ->
+                try { Epub(f).use { BookInfo(f.path, it.title, it.author, it.series, it.seriesIndex, shelf.favourite(f.path), shelf.status(f.path), shelf.collectionsOf(f.path), shelf.place(f.path)) } } catch (e: IOException) { null }
             }
         }
     }
+    BackHandler(group != null || view != "all") { if (group != null) group = null else view = "all" }
+
     val list = books
-    val reading = list?.filter { it.place != null }?.maxByOrNull { it.place!!.at }?.takeIf { query.isBlank() }
-    val shown = list.orEmpty().filter { it !== reading && (query.isBlank() || it.title.contains(query, true) || it.author.contains(query, true)) }.let { l ->
-        when (sort) {
+    val grouping = view in setOf("authors", "series", "collections", "folders")
+    val pool = if (list == null) emptyList() else if (grouping) group?.let { members(list, view, it) }.orEmpty() else onList(list, view)
+    val reading = list?.filter { it.place != null }?.maxByOrNull { it.place!!.at }?.takeIf { view == "all" && query.isBlank() }
+    val shown = pool.filter { it !== reading && (query.isBlank() || it.title.contains(query, true) || it.author.contains(query, true)) }.let { l ->
+        when (if (view == "series") "series" else sort) {
+            "series" -> l // already in the order of the series
             "title" -> l.sortedBy { it.title.lowercase() }
             "author" -> l.sortedWith(compareBy({ it.author.lowercase() }, { it.title.lowercase() }))
-            else -> l.sortedWith(compareByDescending<Entry> { it.place?.at ?: 0L }.thenBy { it.title.lowercase() })
+            else -> l.sortedWith(compareByDescending<BookInfo> { it.place?.at ?: 0L }.thenBy { it.title.lowercase() })
         }
     }
+    /** A group's name as shown: folders without the storage root, a missing author named as such. */
+    @Composable fun named(name: String) = when { view == "folders" -> name.removePrefix(root.path).ifEmpty { "/" }; name.isEmpty() -> stringResource(R.string.unknown_author); else -> name }
     @Composable fun Heading(text: Int) = Text(stringResource(text), Modifier.padding(horizontal = 16.dp, vertical = 12.dp).semantics { heading() }, style = MaterialTheme.typography.titleLarge)
-    LazyColumn(Modifier.fillMaxSize()) {
-        if (reading != null) { item { Heading(R.string.continue_reading) }; item { BookRow(reading, onOpen, big = true) } }
-        item { Heading(R.string.library) }
-        when {
-            !access -> item {
+    @Composable fun Plain(text: Int) = Text(stringResource(text), Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val columns = (maxWidth / 132.dp).toInt().coerceAtLeast(3)
+        LazyColumn(Modifier.fillMaxSize()) {
+            if (reading != null) { item { Heading(R.string.continue_reading) }; item { BookRow(reading, onOpen, { detail = reading }, big = true) } }
+            item { Heading(R.string.library) }
+            if (!access) item {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(stringResource(R.string.reader_needs_file_access))
                     Button({ ctx.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${ctx.packageName}"))) }) { Text(stringResource(R.string.allow_file_access)) }
                 }
             }
-            list == null -> item { Text(stringResource(R.string.looking_for_books), Modifier.padding(16.dp)) }
-            list.isEmpty() -> item { Text(stringResource(R.string.no_books_found), Modifier.padding(16.dp)) }
-            else -> {
+            else if (list == null) item { Plain(R.string.looking_for_books) }
+            else if (list.isEmpty()) item { Plain(R.string.no_books_found) }
+            else {
                 item {
-                    Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text(stringResource(R.string.search_books)) })
-                        Options(R.string.sort_by, listOf("recent" to R.string.sort_recent, "title" to R.string.sort_title, "author" to R.string.sort_author), sort) { sort = it; shelf.sort = it }
+                    Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        for ((key, label) in listOf("all" to R.string.all_books, "favourites" to R.string.favourites, "toread" to R.string.to_read, "read" to R.string.have_read, "authors" to R.string.authors,
+                            "series" to R.string.series, "collections" to R.string.collections, "folders" to R.string.folders, "stats" to R.string.statistics))
+                            FilterChip(view == key, { view = key; group = null }, { Text(stringResource(label)) })
                     }
                 }
-                if (shown.isEmpty() && query.isNotBlank()) item { Text(stringResource(R.string.no_books_match), Modifier.padding(16.dp)) }
-                items(shown, key = { it.path }) { BookRow(it, onOpen) }
+                if (view == "stats") statistics(shelf, list)
+                else if (grouping && group == null) {
+                    val found = groups(list, view)
+                    if (found.isEmpty()) item { Plain(R.string.nothing_here_yet) }
+                    items(found, key = { it.first }) { (name, count) ->
+                        Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable { group = name }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(named(name), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("$count", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        HorizontalDivider(Modifier.padding(start = 16.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                }
+                else {
+                    group?.let { name ->
+                        item {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton({ group = null }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back)) }
+                                Text(named(name), Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                if (view == "collections") TextButton({ shelf.removeCollection(name); group = null; changed++ }) { Text(stringResource(R.string.remove_collection)) }
+                            }
+                        }
+                    }
+                    item {
+                        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text(stringResource(R.string.search_books)) })
+                            if (view != "series") Options(R.string.sort_by, listOf("recent" to R.string.sort_recent, "title" to R.string.sort_title, "author" to R.string.sort_author), sort) { sort = it; shelf.sort = it }
+                            Options(R.string.show_as, listOf(false to R.string.as_list, true to R.string.as_grid), grid) { grid = it; shelf.grid = it }
+                        }
+                    }
+                    if (shown.isEmpty()) item { Plain(if (query.isNotBlank()) R.string.no_books_match else R.string.nothing_here_yet) }
+                    if (grid) items(shown.chunked(columns)) { row ->
+                        Row(Modifier.padding(horizontal = 8.dp)) {
+                            for (b in row) BookCell(b, onOpen, { detail = b }, Modifier.weight(1f))
+                            repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
+                    }
+                    else items(shown, key = { it.path }) { b -> BookRow(b, onOpen, { detail = b }) }
+                }
             }
+        }
+    }
+    detail?.let { b -> BookDetails(b, shelf, onOpen, { changed++ }) { detail = null } }
+}
+
+/** Reading time: today, the last week and in all, then day by day and book by book. */
+private fun LazyListScope.statistics(shelf: Shelf, books: List<BookInfo>) {
+    val days = shelf.timeByDay()
+    val perBook = books.map { it to shelf.timeRead(it.path) }.filter { it.second > 0 }.sortedByDescending { it.second }
+    item {
+        val today = LocalDate.now()
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (days.isEmpty()) Text(stringResource(R.string.no_reading_time_yet), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            for ((label, seconds) in listOf(
+                R.string.today to (days[today.toString()] ?: 0L),
+                R.string.last_7_days to days.filterKeys { it > today.minusDays(7).toString() }.values.sum(),
+                R.string.all_time to days.values.sum(),
+            )) Row { Text(stringResource(label), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge); Text(span(seconds), style = MaterialTheme.typography.bodyLarge) }
+        }
+    }
+    if (days.isNotEmpty()) item { Text(stringResource(R.string.by_day), Modifier.padding(horizontal = 16.dp, vertical = 8.dp).semantics { heading() }, style = MaterialTheme.typography.titleMedium) }
+    val most = days.values.maxOrNull() ?: 1L
+    items(days.entries.reversed().take(14)) { (day, seconds) ->
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(day, Modifier.width(104.dp), style = MaterialTheme.typography.bodyMedium)
+            LinearProgressIndicator({ seconds.toFloat() / most }, Modifier.weight(1f).height(6.dp))
+            Text(span(seconds), Modifier.width(96.dp), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.End)
+        }
+    }
+    if (perBook.isNotEmpty()) item { Text(stringResource(R.string.by_book), Modifier.padding(horizontal = 16.dp, vertical = 8.dp).semantics { heading() }, style = MaterialTheme.typography.titleMedium) }
+    items(perBook) { (b, seconds) ->
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text(b.title, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(span(seconds), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
+/** The small print under a book's title: its place in a series, and the lists it is on. */
 @Composable
-private fun BookRow(b: Entry, onOpen: (String) -> Unit, big: Boolean = false) {
+private fun tags(b: BookInfo) = listOfNotNull(
+    b.series.takeIf { it.isNotEmpty() }?.let { s -> b.seriesIndex?.let { stringResource(R.string.series_s_d, s, if (it % 1 == 0f) it.toInt().toString() else it.toString()) } ?: s },
+    if (b.favourite) stringResource(R.string.favourite) else null,
+    when (b.status) { "toread" -> stringResource(R.string.to_read); "read" -> stringResource(R.string.have_read); else -> null },
+).joinToString("  ·  ")
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun BookRow(b: BookInfo, onOpen: (String) -> Unit, onMore: () -> Unit, big: Boolean = false) {
     val cover by produceState<ImageBitmap?>(null, b.path) { value = withContext(Dispatchers.IO) { loadCover(b.path) } }
-    Row(Modifier.fillMaxWidth().clickable { onOpen(b.path) }.padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+    val details = stringResource(R.string.book_details)
+    Row(Modifier.fillMaxWidth().combinedClickable(onLongClickLabel = details, onLongClick = onMore) { onOpen(b.path) }.padding(start = 16.dp, top = 10.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
         val slot = (if (big) Modifier.size(98.dp, 140.dp) else Modifier.size(56.dp, 80.dp)).border(1.dp, MaterialTheme.colorScheme.outlineVariant)
         cover?.let { Image(it, null, slot, contentScale = ContentScale.Crop) } ?: Box(slot)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (big) 8.dp else 4.dp)) {
             Text(b.title, style = if (big) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (b.author.isNotEmpty()) Text(b.author, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            tags(b).takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             val p = b.place?.progress
             if (p == null) Text(stringResource(R.string.new_book), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -326,8 +439,74 @@ private fun BookRow(b: Entry, onOpen: (String) -> Unit, big: Boolean = false) {
                 Text("${(p * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        IconButton(onMore) { Icon(Icons.Filled.MoreVert, details) }
     }
     if (!big) HorizontalDivider(Modifier.padding(start = 88.dp), color = MaterialTheme.colorScheme.outlineVariant)
+}
+
+/** A book in the cover grid. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun BookCell(b: BookInfo, onOpen: (String) -> Unit, onMore: () -> Unit, modifier: Modifier) {
+    val cover by produceState<ImageBitmap?>(null, b.path) { value = withContext(Dispatchers.IO) { loadCover(b.path) } }
+    Column(modifier.combinedClickable(onLongClickLabel = stringResource(R.string.book_details), onLongClick = onMore) { onOpen(b.path) }.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        val slot = Modifier.fillMaxWidth().aspectRatio(0.7f).border(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        // a book without a cover shows its title where the cover would be
+        cover?.let { Image(it, null, slot, contentScale = ContentScale.Crop) } ?: Box(slot.padding(8.dp), contentAlignment = Alignment.Center) { Text(b.title, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center, maxLines = 4, overflow = TextOverflow.Ellipsis) }
+        Text(b.title, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        b.place?.progress?.let { p -> LinearProgressIndicator({ p }, Modifier.fillMaxWidth().height(3.dp)) }
+    }
+}
+
+/** Everything about one book, and what can be done with it: lists, collections, opening, deleting. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BookDetails(b: BookInfo, shelf: Shelf, onOpen: (String) -> Unit, onChanged: () -> Unit, onClose: () -> Unit) = ModalBottomSheet(onClose, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    val ctx = LocalContext.current
+    val file = File(b.path)
+    val cover by produceState<ImageBitmap?>(null, b.path) { value = withContext(Dispatchers.IO) { loadCover(b.path) } }
+    val description by produceState("", b.path) { value = withContext(Dispatchers.IO) { try { Epub(file).use { it.description } } catch (e: IOException) { "" } } }
+    var favourite by remember { mutableStateOf(b.favourite) }
+    var status by remember { mutableStateOf(b.status) }
+    var names by remember { mutableStateOf(shelf.collections()) }
+    var mine by remember { mutableStateOf(shelf.collectionsOf(b.path)) }
+    var deleting by remember { mutableStateOf(false) }
+    Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            val slot = Modifier.size(98.dp, 140.dp).border(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            cover?.let { Image(it, null, slot, contentScale = ContentScale.Crop) } ?: Box(slot)
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(b.title, Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineSmall)
+                if (b.author.isNotEmpty()) Text(b.author, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                tags(b.copy(favourite = false, status = "")).takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                b.place?.let { Text("${(it.progress * 100).roundToInt()}%", style = MaterialTheme.typography.bodyMedium) }
+                shelf.timeRead(b.path).takeIf { it > 0 }?.let { Text(stringResource(R.string.time_read_s, span(it)), style = MaterialTheme.typography.bodyMedium) }
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Button({ onClose(); onOpen(b.path) }) { Text(stringResource(R.string.open)) }
+            FilterChip(favourite, { favourite = !favourite; shelf.setFavourite(b.path, favourite); onChanged() }, { Text(stringResource(R.string.favourite)) })
+        }
+        Options(R.string.reading_list, listOf("" to R.string.status_none, "toread" to R.string.to_read, "read" to R.string.have_read), status) { status = it; shelf.setStatus(b.path, it); onChanged() }
+        Column {
+            Text(stringResource(R.string.collections), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (name in names) FilterChip(name in mine, { shelf.setInCollection(name, b.path, name !in mine); mine = shelf.collectionsOf(b.path); onChanged() }, { Text(name) })
+            }
+            var fresh by remember { mutableStateOf("") }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(fresh, { fresh = it }, Modifier.weight(1f), singleLine = true, placeholder = { Text(stringResource(R.string.new_collection)) })
+                TextButton({ shelf.setInCollection(fresh.trim(), b.path, true); names = shelf.collections(); mine = shelf.collectionsOf(b.path); fresh = ""; onChanged() }, enabled = fresh.isNotBlank()) { Text(stringResource(R.string.add)) }
+            }
+        }
+        if (description.isNotEmpty()) Text(description)
+        Text("${file.name}  ·  ${Formatter.formatShortFileSize(ctx, file.length())}\n${file.parent}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TextButton({ deleting = true }) { Text(stringResource(R.string.delete_book), color = MaterialTheme.colorScheme.error) }
+    }
+    // shortcut: what the reader remembers about a deleted book (place, bookmarks, time) is kept, in case the file comes back
+    if (deleting) AlertDialog({ deleting = false }, text = { Text(stringResource(R.string.delete_this_book)) },
+        confirmButton = { TextButton({ file.delete(); onChanged(); onClose() }) { Text(stringResource(R.string.delete), color = MaterialTheme.colorScheme.error) } },
+        dismissButton = { TextButton({ deleting = false }) { Text(stringResource(android.R.string.cancel)) } })
 }
 
 /**
@@ -499,7 +678,8 @@ internal fun Reading(path: String, onScreen: () -> Unit, onClose: () -> Unit) {
     val title = book.toc.firstOrNull { it.second.substringBefore('#') == book.spine[chapter] }?.first.orEmpty()
     val numbered = stringResource(R.string.chapter_d, chapter + 1) // the name of a chapter the contents do not list
     val marked = remember(marks, chapter, page, pages) { pages > 0 && shelf.markOn(path, chapter, page.toFloat() / pages, (page + 1f) / pages) != null }
-    fun save() { if (pages > 0) shelf.save(path, chapter, page.toFloat() / pages, book.progress(chapter, (page + 1f) / pages)) }
+    // every save is a page turned or a chapter opened: also the moment the reading clock is read
+    fun save() { if (pages > 0) { shelf.save(path, chapter, page.toFloat() / pages, book.progress(chapter, (page + 1f) / pages)); shelf.pageTurned(path) } }
     fun go(to: Int, at: Float, anchor: String? = null) {
         if (to !in book.spine.indices) return
         chapter = to; target = at; page = 0; pages = 0
@@ -625,6 +805,7 @@ internal fun Reading(path: String, onScreen: () -> Unit, onClose: () -> Unit) {
             if (r - l != or - ol || b - t != ob - ot) web.post { go(chapter, if (pages == 0) target else page.toFloat() / pages) }
         }
         pageTurner = ::turn
+        shelf.opened(path)
         onDispose { pageTurner = null; save(); voice[0]?.shutdown(); book.close(); web.destroy() }
     }
 

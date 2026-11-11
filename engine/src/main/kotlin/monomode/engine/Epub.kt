@@ -37,6 +37,11 @@ class Epub(val file: File) : Closeable {
 
     val title: String
     val author: String
+    /** The blurb, as plain text; "" when the book has none. */
+    val description: String
+    /** The series the book belongs to and its number in it; "" and null when it stands alone. */
+    val series: String
+    val seriesIndex: Float?
     /** Zip entries of the chapters, in reading order. */
     val spine: List<String>
     /** Contents: label to "zip entry" or "zip entry#anchor". Empty when the book has none. */
@@ -50,6 +55,13 @@ class Epub(val file: File) : Closeable {
             items = tags.mapNotNull { t -> attr(t, "id")?.let { id -> attr(t, "href")?.let { id to (resolve(opfPath, it) to attr(t, "media-type").orEmpty()) } } }.toMap()
             title = Regex("<dc:title[^>]*>(.*?)</dc:title>", RegexOption.DOT_MATCHES_ALL).find(opf)?.let { plain(it.groupValues[1]) }?.ifBlank { null } ?: file.nameWithoutExtension
             author = Regex("<dc:creator[^>]*>(.*?)</dc:creator>", RegexOption.DOT_MATCHES_ALL).find(opf)?.let { plain(it.groupValues[1]) }.orEmpty()
+            // a description is often HTML, escaped once more to sit inside the XML: decode, then strip
+            description = Regex("<dc:description[^>]*>(.*?)</dc:description>", RegexOption.DOT_MATCHES_ALL).find(opf)?.let { plain(plain(it.groupValues[1])) }.orEmpty()
+            val metas = Regex("<meta\\b[^>]*?(?:/>|>(.*?)</meta>)", RegexOption.DOT_MATCHES_ALL).findAll(opf).toList()
+            fun named(name: String) = metas.firstOrNull { attr(it.value, "name") == name }?.let { attr(it.value, "content") }       // Calibre and EPUB 2
+            fun property(name: String) = metas.firstOrNull { attr(it.value, "property") == name }?.let { plain(it.groupValues[1]) } // EPUB 3
+            series = named("calibre:series") ?: property("belongs-to-collection") ?: ""
+            seriesIndex = (named("calibre:series_index") ?: property("group-position"))?.toFloatOrNull()
             spine = Regex("<itemref\\s[^>]*>").findAll(opf).mapNotNull { attr(it.value, "idref")?.let(items::get)?.first }.toList()
             // EPUB 3 has a nav document, EPUB 2 an NCX file named by the spine
             val nav = tags.firstOrNull { "nav" in attr(it, "properties").orEmpty().split(' ') }?.let { attr(it, "id") }?.let(items::get)?.first
