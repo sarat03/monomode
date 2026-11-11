@@ -89,6 +89,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import monomode.engine.Epub
+import monomode.engine.Look
+import monomode.engine.Place
 import monomode.engine.epubCover
 import monomode.engine.findEpubs
 import java.io.ByteArrayInputStream
@@ -97,37 +99,6 @@ import java.io.IOException
 import java.net.URLConnection
 import kotlin.math.abs
 import kotlin.math.roundToInt
-
-/** What MonoMode's reader remembers: where each book was left, how the page looks, how the library is sorted. */
-object Shelf {
-    class Place(val chapter: Int, val inChapter: Float, val progress: Float, val at: Long)
-
-    /**
-     * How the page looks. [theme] "day", "sepia" or "night"; [font] a CSS family, or "" for the book's own;
-     * [size] in percent; [spacing] the line height in percent; [margin] each side, in percent of the width.
-     */
-    data class Look(val theme: String, val font: String, val size: Int, val spacing: Int, val margin: Int)
-
-    private fun prefs(ctx: Context) = ctx.getSharedPreferences("reader", Context.MODE_PRIVATE)
-    fun place(ctx: Context, path: String): Place? = prefs(ctx).getString("at:$path", null)?.split('|')?.let {
-        try { Place(it[0].toInt(), it[1].toFloat(), it[2].toFloat(), it[3].toLong()) } catch (e: RuntimeException) { null }
-    }
-    fun save(ctx: Context, path: String, chapter: Int, inChapter: Float, progress: Float) =
-        prefs(ctx).edit().putString("at:$path", "$chapter|$inChapter|$progress|${System.currentTimeMillis()}").apply()
-
-    /** Night the first time when the app is dark; after that, whatever was chosen. */
-    fun look(ctx: Context, dark: Boolean) = prefs(ctx).let {
-        Look(it.getString("theme", null) ?: if (dark) "night" else "day", it.getString("font", "serif")!!, it.getInt("size", 110), it.getInt("spacing", 150), it.getInt("margin", 6))
-    }
-    fun setLook(ctx: Context, l: Look) = prefs(ctx).edit().putString("theme", l.theme).putString("font", l.font).putInt("size", l.size).putInt("spacing", l.spacing).putInt("margin", l.margin).apply()
-
-    fun sort(ctx: Context) = prefs(ctx).getString("sort", "recent")!!
-    fun setSort(ctx: Context, s: String) = prefs(ctx).edit().putString("sort", s).apply()
-
-    /** False shows the reader in grey, like e-paper. */
-    fun colour(ctx: Context) = prefs(ctx).getBoolean("colour", true)
-    fun setColour(ctx: Context, on: Boolean) = prefs(ctx).edit().putBoolean("colour", on).apply()
-}
 
 /** A book's cover, scaled down for a thumbnail; null when it has none. Reads the file: call off the main thread. */
 internal fun loadCover(path: String): ImageBitmap? = epubCover(File(path))?.let { bytes ->
@@ -146,7 +117,7 @@ private fun <T> Options(title: Int, options: List<Pair<T, Int>>, selected: T, on
 
 /** The page options every e-reader keeps under "Aa": theme, text size, font, line spacing and margins. */
 @Composable
-internal fun LookOptions(look: Shelf.Look, set: (Shelf.Look) -> Unit) {
+internal fun LookOptions(look: Look, set: (Look) -> Unit) {
     Options(R.string.theme, listOf("day" to R.string.theme_day, "sepia" to R.string.theme_sepia, "night" to R.string.theme_night), look.theme) { set(look.copy(theme = it)) }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(stringResource(R.string.text_size), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -167,10 +138,11 @@ internal fun LookOptions(look: Shelf.Look, set: (Shelf.Look) -> Unit) {
 @Composable
 internal fun ReaderSettings(onColour: () -> Unit, onBack: () -> Unit, more: @Composable () -> Unit) {
     val ctx = LocalContext.current
+    val shelf = remember { Records.shelf(ctx) }
     BackHandler(onBack = onBack)
     val dark = isDark()
-    var look by remember { mutableStateOf(Shelf.look(ctx, dark)) }
-    var colour by remember { mutableStateOf(Shelf.colour(ctx)) }
+    var look by remember { mutableStateOf(shelf.look(dark)) }
+    var colour by remember { mutableStateOf(shelf.colour) }
     // E-reader mode's "Grayscale screen" option greys the whole phone; this app cannot switch that back on its own
     val systemGrey = remember {
         // colour correction on, and set to monochrome (0): other correction types keep colour
@@ -184,9 +156,9 @@ internal fun ReaderSettings(onColour: () -> Unit, onBack: () -> Unit, more: @Com
         }
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Section(R.string.page)
-            LookOptions(look) { look = it; Shelf.setLook(ctx, it) }
+            LookOptions(look) { look = it; shelf.setLook(it) }
             Section(R.string.screen)
-            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).toggleable(colour && !systemGrey, enabled = !systemGrey, role = Role.Switch) { colour = it; Shelf.setColour(ctx, it); onColour() }, verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).toggleable(colour && !systemGrey, enabled = !systemGrey, role = Role.Switch) { colour = it; shelf.colour = it; onColour() }, verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(stringResource(R.string.colour), style = MaterialTheme.typography.bodyLarge)
                     Text(stringResource(if (systemGrey) R.string.colour_is_off_for_the_phone else R.string.off_shows_everything_in_grey), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -198,7 +170,7 @@ internal fun ReaderSettings(onColour: () -> Unit, onBack: () -> Unit, more: @Com
     }
 }
 
-private class Entry(val path: String, val title: String, val author: String, val place: Shelf.Place?)
+private class Entry(val path: String, val title: String, val author: String, val place: Place?)
 
 /**
  * Every EPUB on the phone, as e-reader apps lay a library out: the book being read on top under
@@ -208,15 +180,16 @@ private class Entry(val path: String, val title: String, val author: String, val
 @Composable
 internal fun Library(resumes: Int, onOpen: (String) -> Unit) {
     val ctx = LocalContext.current
+    val shelf = remember { Records.shelf(ctx) }
     val access = remember(resumes) { Environment.isExternalStorageManager() }
     var books by remember { mutableStateOf<List<Entry>?>(null) }
     var query by remember { mutableStateOf("") }
-    var sort by remember { mutableStateOf(Shelf.sort(ctx)) }
+    var sort by remember { mutableStateOf(shelf.sort) }
     // shortcut: rescans on every return; fine for hundreds of books, cache the list if a library gets slow
     LaunchedEffect(resumes) {
         if (access) books = withContext(Dispatchers.IO) {
             findEpubs(Environment.getExternalStorageDirectory()).mapNotNull { f ->
-                try { Epub(f).use { Entry(f.path, it.title, it.author, Shelf.place(ctx, f.path)) } } catch (e: IOException) { null }
+                try { Epub(f).use { Entry(f.path, it.title, it.author, shelf.place(f.path)) } } catch (e: IOException) { null }
             }
         }
     }
@@ -246,7 +219,7 @@ internal fun Library(resumes: Int, onOpen: (String) -> Unit) {
                 item {
                     Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text(stringResource(R.string.search_books)) })
-                        Options(R.string.sort_by, listOf("recent" to R.string.sort_recent, "title" to R.string.sort_title, "author" to R.string.sort_author), sort) { sort = it; Shelf.setSort(ctx, it) }
+                        Options(R.string.sort_by, listOf("recent" to R.string.sort_recent, "title" to R.string.sort_title, "author" to R.string.sort_author), sort) { sort = it; shelf.sort = it }
                     }
                 }
                 if (shown.isEmpty() && query.isNotBlank()) item { Text(stringResource(R.string.no_books_match), Modifier.padding(16.dp)) }
@@ -294,7 +267,7 @@ private const val HOST = "book.invalid"
 private val PAPER = mapOf("day" to ("#ffffff" to "#111111"), "sepia" to ("#f4ecd8" to "#3b2f1e"), "night" to ("#121212" to "#d0d0d0"))
 
 /** The page style for a view [w] by [h] CSS pixels. Sizes are given in pixels: vw and vh are not dependable in a WebView. */
-private fun css(l: Shelf.Look, w: Float, h: Float): String {
+private fun css(l: Look, w: Float, h: Float): String {
     val (paper, ink) = PAPER.getValue(l.theme)
     // a wide screen shows two columns, like an open book: lines the full width of a tablet are too long to read
     val columns = if (w > 840) 2 else 1
@@ -322,6 +295,7 @@ private fun css(l: Shelf.Look, w: Float, h: Float): String {
 @Composable
 internal fun Reading(path: String, onClose: () -> Unit) {
     val ctx = LocalContext.current
+    val shelf = remember { Records.shelf(ctx) }
     var bars by remember { mutableStateOf(false) }
     BackHandler { if (bars) bars = false else onClose() }
     // shortcut: opened on the main thread; it reads only the zip's index and the small package file
@@ -329,19 +303,19 @@ internal fun Reading(path: String, onClose: () -> Unit) {
     if (book == null) { Text(stringResource(R.string.cant_open_book), Modifier.safeDrawingPadding().padding(16.dp)); return }
 
     val dark = isDark()
-    val start = remember { Shelf.place(ctx, path) }
+    val start = remember { shelf.place(path) }
     var chapter by remember { mutableStateOf((start?.chapter ?: 0).coerceIn(book.spine.indices)) }
     /** Where in the chapter to land while it loads; [pages] is 0 until it has been laid out. */
     var target by remember { mutableStateOf(start?.inChapter ?: 0f) }
     var page by remember { mutableStateOf(0) }
     var pages by remember { mutableStateOf(0) }
-    var look by remember { mutableStateOf(Shelf.look(ctx, dark)) }
+    var look by remember { mutableStateOf(shelf.look(dark)) }
     var sheet by remember { mutableStateOf<String?>(null) }
     val web = remember { BookView(ctx) }
 
     // the end of the page counts as read, so the last page of the book is 100%
     val progress = book.progress(chapter, if (pages == 0) target else (page + 1f) / pages)
-    fun save() { if (pages > 0) Shelf.save(ctx, path, chapter, page.toFloat() / pages, book.progress(chapter, (page + 1f) / pages)) }
+    fun save() { if (pages > 0) shelf.save(path, chapter, page.toFloat() / pages, book.progress(chapter, (page + 1f) / pages)) }
     fun go(to: Int, at: Float, anchor: String? = null) {
         if (to !in book.spine.indices) return
         chapter = to; target = at; page = 0; pages = 0
@@ -357,9 +331,9 @@ internal fun Reading(path: String, onClose: () -> Unit) {
         if (next in 0 until web.pages) { web.show(next); page = next; save() } else go(chapter + if (forward) 1 else -1, if (forward) 0f else 1f)
     }
     /** A new look means new page breaks: lay the chapter out again and stay at the same place in it. */
-    fun restyle(l: Shelf.Look) {
+    fun restyle(l: Look) {
         val at = if (pages == 0) target else page.toFloat() / pages
-        look = l; Shelf.setLook(ctx, l); web.settings.textZoom = l.size
+        look = l; shelf.setLook(l); web.settings.textZoom = l.size
         go(chapter, at)
     }
 

@@ -168,7 +168,7 @@ class HomeActivity : ComponentActivity() {
 
     /** "Colour" off in the reader's settings: this screen is drawn through a filter that removes all colour. Only MonoMode's own reader; the phone-wide grey is the mode's own option. */
     private fun applyColour() {
-        val grey = mode == Profile.E_READER && reader == null && !Shelf.colour(this)
+        val grey = mode == Profile.E_READER && reader == null && !Records.shelf(this).colour
         window.decorView.setLayerType(if (grey) View.LAYER_TYPE_HARDWARE else View.LAYER_TYPE_NONE, if (grey) Paint().apply { colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) }) } else null)
     }
 
