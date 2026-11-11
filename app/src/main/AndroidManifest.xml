@@ -31,10 +31,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- configChanges: turning the phone must not close the open book; the screens lay themselves out again -->
         <!-- home screen only while a mode sets it with set-home-activity; launchMode keeps one copy; own affinity so
              MonoMode opened from it gets its own task, which Home does not clear (that ended the session) -->
         <activity
             android:name=".HomeActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:exported="true"
             android:launchMode="singleTask"
             android:taskAffinity="io.github.sarat03.monomode.home"

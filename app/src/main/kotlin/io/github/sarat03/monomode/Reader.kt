@@ -3,6 +3,8 @@ package io.github.sarat03.monomode
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Environment
@@ -39,11 +41,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.List
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -75,7 +80,10 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -87,10 +95,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import monomode.engine.Epub
 import monomode.engine.Look
 import monomode.engine.Place
+import monomode.engine.Shelf
+import java.text.DateFormat
+import java.util.Date
 import monomode.engine.epubCover
 import monomode.engine.findEpubs
 import java.io.ByteArrayInputStream
@@ -129,14 +141,46 @@ internal fun LookOptions(look: Look, set: (Look) -> Unit) {
     Options(R.string.font, listOf("serif" to R.string.font_serif, "sans-serif" to R.string.font_sans, "" to R.string.font_book), look.font) { set(look.copy(font = it)) }
     Options(R.string.line_spacing, listOf(130 to R.string.compact, 150 to R.string.normal, 180 to R.string.wide), look.spacing) { set(look.copy(spacing = it)) }
     Options(R.string.margins, listOf(3 to R.string.narrow, 6 to R.string.normal, 10 to R.string.wide), look.margin) { set(look.copy(margin = it)) }
+    Column {
+        Text(stringResource(R.string.text), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(look.bold, { set(look.copy(bold = !look.bold)) }, { Text(stringResource(R.string.bold)) })
+            FilterChip(look.justify, { set(look.copy(justify = !look.justify)) }, { Text(stringResource(R.string.justify)) })
+            FilterChip(look.hyphens, { set(look.copy(hyphens = !look.hyphens)) }, { Text(stringResource(R.string.hyphenate)) })
+            FilterChip(look.indent, { set(look.copy(indent = !look.indent)) }, { Text(stringResource(R.string.book_paragraphs)) })
+        }
+    }
 }
+
+/** Brightness for the reader alone; "Phone's own" hands it back. [onScreen] applies it. */
+@Composable
+internal fun Brightness(shelf: Shelf, onScreen: () -> Unit) = Column {
+    var level by remember { mutableStateOf(shelf.brightness) }
+    val name = stringResource(R.string.brightness)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(name, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        FilterChip(level == null, { level = null; shelf.brightness = null; onScreen() }, { Text(stringResource(R.string.phones_own)) })
+    }
+    // never fully dark: the slider itself must stay visible
+    Slider(level ?: 0.5f, { level = it.coerceAtLeast(0.02f); shelf.brightness = level; onScreen() }, Modifier.semantics { contentDescription = name })
+}
+
+@Composable
+private fun SwitchRow(title: Int, note: Int?, on: Boolean, enabled: Boolean = true, set: (Boolean) -> Unit) =
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).toggleable(on, enabled = enabled, role = Role.Switch, onValueChange = set), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(title), style = MaterialTheme.typography.bodyLarge)
+            if (note != null) Text(stringResource(note), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(on, null, enabled = enabled)
+    }
 
 /**
  * The reader's own settings, reached from the library: how the page looks, colour or grey, and under them [more]
- * (the other apps and the way back to MonoMode). [onColour] runs after the colour choice has been saved.
+ * (the other apps and the way back to MonoMode). [onScreen] runs after a choice about the screen has been saved.
  */
 @Composable
-internal fun ReaderSettings(onColour: () -> Unit, onBack: () -> Unit, more: @Composable () -> Unit) {
+internal fun ReaderSettings(onScreen: () -> Unit, onBack: () -> Unit, more: @Composable () -> Unit) {
     val ctx = LocalContext.current
     val shelf = remember { Records.shelf(ctx) }
     BackHandler(onBack = onBack)
@@ -158,12 +202,22 @@ internal fun ReaderSettings(onColour: () -> Unit, onBack: () -> Unit, more: @Com
             Section(R.string.page)
             LookOptions(look) { look = it; shelf.setLook(it) }
             Section(R.string.screen)
-            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).toggleable(colour && !systemGrey, enabled = !systemGrey, role = Role.Switch) { colour = it; shelf.colour = it; onColour() }, verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(stringResource(R.string.colour), style = MaterialTheme.typography.bodyLarge)
-                    Text(stringResource(if (systemGrey) R.string.colour_is_off_for_the_phone else R.string.off_shows_everything_in_grey), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SwitchRow(R.string.colour, if (systemGrey) R.string.colour_is_off_for_the_phone else R.string.off_shows_everything_in_grey, colour && !systemGrey, enabled = !systemGrey) { colour = it; shelf.colour = it; onScreen() }
+            Brightness(shelf, onScreen)
+            var orientation by remember { mutableStateOf(shelf.orientation) }
+            Options(R.string.orientation, listOf("auto" to R.string.orientation_auto, "portrait" to R.string.orientation_portrait, "landscape" to R.string.orientation_landscape), orientation) { orientation = it; shelf.orientation = it; onScreen() }
+            Section(R.string.reading)
+            var keepOn by remember { mutableStateOf(shelf.keepOn) }
+            SwitchRow(R.string.keep_the_screen_on, R.string.while_a_book_is_open, keepOn) { keepOn = it; shelf.keepOn = it }
+            var volumeKeys by remember { mutableStateOf(shelf.volumeKeys) }
+            SwitchRow(R.string.volume_keys_turn_pages, null, volumeKeys) { volumeKeys = it; shelf.volumeKeys = it }
+            var status by remember { mutableStateOf(shelf.status) }
+            Column {
+                Text(stringResource(R.string.line_at_the_foot), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for ((key, label) in listOf("clock" to R.string.status_clock, "title" to R.string.status_chapter, "battery" to R.string.status_battery, "left" to R.string.status_pages_left, "page" to R.string.status_page, "percent" to R.string.status_percent))
+                        FilterChip(key in status, { status = if (key in status) status - key else status + key; shelf.status = status }, { Text(stringResource(label)) })
                 }
-                Switch(colour && !systemGrey, null, enabled = !systemGrey)
             }
             more()
         }
@@ -260,6 +314,9 @@ private class BookView(ctx: Context) : WebView(ctx) {
     fun show(page: Int) = scrollTo(page.coerceIn(0, pages - 1) * width, 0)
 }
 
+/** Turns the page of the open book, forward or back; the activity calls it for the volume keys. Null while no book is open. */
+internal var pageTurner: ((Boolean) -> Unit)? = null
+
 // a made-up address the chapters are served under, so the book's own relative links (styles, pictures) resolve
 private const val HOST = "book.invalid"
 
@@ -273,12 +330,17 @@ private fun css(l: Look, w: Float, h: Float): String {
     val columns = if (w > 840) 2 else 1
     val m = w / columns * l.margin / 100
     // a page is exactly one screen: each column plus its gap is the view's width (or half of it), and the body is one view tall
-    return "<style>html{height:${h}px !important;background:$paper !important}" +
+    // the viewport line pins the zoom: without it the WebView carries a zoom over from the last size it had, and grows it on every turn of the phone
+    return "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no\"/><style>html{height:${h}px !important;background:$paper !important}" +
         "body{box-sizing:content-box !important;margin:0 !important;padding:24px ${m}px !important;width:auto !important;height:${h - 48}px !important;" +
         "column-width:${w / columns - 2 * m}px !important;column-gap:${2 * m}px !important;column-fill:auto !important;" +
         "background:$paper !important;color:$ink !important;line-height:${l.spacing / 100f} !important}" +
         "p,li,blockquote,div{line-height:inherit !important}" +
         (if (l.font.isNotEmpty()) "body,p,li,div,span,blockquote,td{font-family:${l.font} !important}" else "") +
+        (if (l.bold) "body,p,li,div,span,td{font-weight:bold !important}" else "") +
+        (if (l.justify) "p,li,div{text-align:justify !important}" else "") +
+        (if (l.hyphens) "p,li,div{hyphens:auto !important;-webkit-hyphens:auto !important}" else "") +
+        (if (l.indent) "p{text-indent:1.5em !important;margin-top:0 !important;margin-bottom:0 !important}" else "") +
         // a book's own colours are made for white paper
         (if (l.theme != "day") "body *{color:inherit !important;background-color:transparent !important}" else "a{color:inherit !important}") +
         "img,svg,video{max-width:100% !important;max-height:${h - 60}px !important;height:auto;break-inside:avoid}</style>"
@@ -293,7 +355,7 @@ private fun css(l: Look, w: Float, h: Float): String {
 @SuppressLint("ClickableViewAccessibility") // taps are a shortcut; the bars offer the same moves as buttons
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun Reading(path: String, onClose: () -> Unit) {
+internal fun Reading(path: String, onScreen: () -> Unit, onClose: () -> Unit) {
     val ctx = LocalContext.current
     val shelf = remember { Records.shelf(ctx) }
     var bars by remember { mutableStateOf(false) }
@@ -312,9 +374,14 @@ internal fun Reading(path: String, onClose: () -> Unit) {
     var look by remember { mutableStateOf(shelf.look(dark)) }
     var sheet by remember { mutableStateOf<String?>(null) }
     val web = remember { BookView(ctx) }
+    var marks by remember { mutableStateOf(shelf.marks(path)) }
+    /** Where a jump started (chapter, place in it, and the percent the page showed), offered as "Back to" until the next page turn. */
+    var before by remember { mutableStateOf<Triple<Int, Float, String>?>(null) }
 
     // the end of the page counts as read, so the last page of the book is 100%
     val progress = book.progress(chapter, if (pages == 0) target else (page + 1f) / pages)
+    val title = book.toc.firstOrNull { it.second.substringBefore('#') == book.spine[chapter] }?.first.orEmpty()
+    val marked = remember(marks, chapter, page, pages) { pages > 0 && shelf.markOn(path, chapter, page.toFloat() / pages, (page + 1f) / pages) != null }
     fun save() { if (pages > 0) shelf.save(path, chapter, page.toFloat() / pages, book.progress(chapter, (page + 1f) / pages)) }
     fun go(to: Int, at: Float, anchor: String? = null) {
         if (to !in book.spine.indices) return
@@ -328,7 +395,19 @@ internal fun Reading(path: String, onClose: () -> Unit) {
     fun turn(forward: Boolean) {
         if (pages == 0) return // the chapter is still loading
         val next = web.page + if (forward) 1 else -1
+        before = null
         if (next in 0 until web.pages) { web.show(next); page = next; save() } else go(chapter + if (forward) 1 else -1, if (forward) 0f else 1f)
+    }
+    /** [go], remembering where it started. */
+    fun jump(to: Int, at: Float, anchor: String? = null) {
+        if (to !in book.spine.indices) return
+        before = Triple(chapter, if (pages == 0) target else page.toFloat() / pages, "${(progress * 100).roundToInt()}%")
+        go(to, at, anchor)
+    }
+    fun toggleMark() {
+        if (pages == 0) return
+        shelf.toggleMark(path, chapter, page.toFloat() / pages, (page + 1f) / pages, progress, title.ifEmpty { ctx.getString(R.string.chapter_d, chapter + 1) })
+        marks = shelf.marks(path)
     }
     /** A new look means new page breaks: lay the chapter out again and stay at the same place in it. */
     fun restyle(l: Look) {
@@ -338,7 +417,7 @@ internal fun Reading(path: String, onClose: () -> Unit) {
     }
 
     DisposableEffect(web) {
-        web.settings.apply { blockNetworkLoads = true; allowFileAccess = false; allowContentAccess = false; textZoom = look.size; setSupportZoom(false) } // JavaScript is off by default
+        web.settings.apply { blockNetworkLoads = true; allowFileAccess = false; allowContentAccess = false; textZoom = look.size; setSupportZoom(false); useWideViewPort = true } // useWideViewPort: obey the viewport line css() adds // JavaScript is off by default
         web.isHorizontalScrollBarEnabled = false; web.isVerticalScrollBarEnabled = false; web.overScrollMode = View.OVER_SCROLL_NEVER
         web.webViewClient = object : WebViewClient() {
             // runs on a WebView thread; ZipFile is safe to share
@@ -356,15 +435,16 @@ internal fun Reading(path: String, onClose: () -> Unit) {
             // a link in the text: follow it inside the book, never out of it
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val i = book.spine.indexOf(request.url.path.orEmpty().removePrefix("/"))
-                if (request.url.host == HOST && i >= 0) go(i, 0f, request.url.fragment)
+                if (request.url.host == HOST && i >= 0) jump(i, 0f, request.url.fragment)
                 bars = false // the tap that followed the link may have opened them
                 return true
             }
             // the number of pages is known only once the chapter has been drawn
             override fun onPageFinished(view: WebView, url: String) = web.postVisualStateCallback(0, object : WebView.VisualStateCallback() {
                 override fun onComplete(id: Long) {
+                    // the page that holds the place: rounding up instead would creep forward on every new layout
                     // an #anchor scrolls only until its target is just in view at the right edge, mid-page: its page is the next whole one
-                    web.show(web.pending?.let { (it * web.pages).roundToInt() } ?: ((web.scrollX + web.width - 1) / web.width.coerceAtLeast(1)))
+                    web.show(web.pending?.let { (it * web.pages + 0.001f).toInt() } ?: ((web.scrollX + web.width - 1) / web.width.coerceAtLeast(1)))
                     web.pending = null
                     page = web.page; pages = web.pages; save()
                 }
@@ -373,7 +453,12 @@ internal fun Reading(path: String, onClose: () -> Unit) {
         val taps = GestureDetector(ctx, object : GestureDetector.SimpleOnGestureListener() {
             override fun onSingleTapUp(e: MotionEvent): Boolean {
                 // a tap on a link also lands here first; the link then wins, see shouldOverrideUrlLoading
-                when { e.x < web.width * 0.3f -> turn(false); e.x > web.width * 0.7f -> turn(true); else -> bars = !bars }
+                when {
+                    e.x > web.width * 0.85f && e.y < web.height * 0.12f -> toggleMark() // the top corner, as a page is dog-eared
+                    e.x < web.width * 0.3f -> turn(false)
+                    e.x > web.width * 0.7f -> turn(true)
+                    else -> bars = !bars
+                }
                 return false
             }
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, vx: Float, vy: Float): Boolean {
@@ -387,19 +472,39 @@ internal fun Reading(path: String, onClose: () -> Unit) {
         web.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or, ob ->
             if (r - l != or - ol || b - t != ob - ot) web.post { go(chapter, if (pages == 0) target else page.toFloat() / pages) }
         }
-        onDispose { save(); book.close(); web.destroy() }
+        pageTurner = ::turn
+        onDispose { pageTurner = null; save(); book.close(); web.destroy() }
     }
 
     val (paper, ink) = PAPER.getValue(look.theme).let { Color(android.graphics.Color.parseColor(it.first)) to Color(android.graphics.Color.parseColor(it.second)) }
     val percent = "${(progress * 100).roundToInt()}%"
-    val title = book.toc.firstOrNull { it.second.substringBefore('#') == book.spine[chapter] }?.first.orEmpty()
     Box(Modifier.fillMaxSize().background(paper).safeDrawingPadding()) {
         Column {
             AndroidView({ web }, Modifier.weight(1f).fillMaxWidth())
             // the quiet line every e-reader keeps at the foot of the page
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(title, Modifier.weight(1f), color = ink.copy(alpha = 0.7f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(if (pages > 0) stringResource(R.string.page_d_of_d, page + 1, pages) + "  ·  $percent" else percent, color = ink.copy(alpha = 0.7f), fontSize = 12.sp)
+                val status = remember { shelf.status }
+                // clock and battery, refreshed twice a minute while they are shown
+                val tick by produceState(0, status) { while ("clock" in status || "battery" in status) { delay(30_000); value++ } }
+                val left = listOfNotNull(
+                    if ("clock" in status) remember(tick) { DateFormat.getTimeInstance(DateFormat.SHORT).format(Date()) } else null,
+                    title.takeIf { "title" in status && it.isNotEmpty() },
+                ).joinToString("  ·  ")
+                val right = listOfNotNull(
+                    if ("battery" in status) remember(tick) { ctx.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) }?.let { stringResource(R.string.battery_d, it) } else null,
+                    if ("left" in status && pages > 0) pluralStringResource(R.plurals.pages_left, pages - page - 1, pages - page - 1) else null,
+                    if ("page" in status && pages > 0) stringResource(R.string.page_d_of_d, page + 1, pages) else null,
+                    percent.takeIf { "percent" in status },
+                ).joinToString("  ·  ")
+                Text(left, Modifier.weight(1f), color = ink.copy(alpha = 0.7f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(right, color = ink.copy(alpha = 0.7f), fontSize = 12.sp)
+            }
+        }
+        // a bookmarked page wears a ribbon in the corner that was tapped
+        if (marked) Box(Modifier.align(Alignment.TopEnd).padding(end = 20.dp).size(14.dp, 30.dp).background(MaterialTheme.colorScheme.primary))
+        before?.let { (c, f, was) ->
+            FilledTonalButton({ before = null; go(c, f) }, Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = if (bars) 120.dp else 32.dp)) {
+                Text(stringResource(R.string.back_to_s, was))
             }
         }
         if (bars) {
@@ -411,6 +516,7 @@ internal fun Reading(path: String, onClose: () -> Unit) {
                         Text(book.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         if (book.author.isNotEmpty()) Text(book.author, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
+                    IconButton(::toggleMark) { Icon(Icons.Filled.Star, stringResource(if (marked) R.string.remove_bookmark else R.string.add_bookmark), tint = if (marked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline) }
                     IconButton({ sheet = "contents" }) { Icon(Icons.AutoMirrored.Outlined.List, stringResource(R.string.contents)) }
                     val textAndPage = stringResource(R.string.text_and_page)
                     TextButton({ sheet = "look" }, Modifier.semantics { contentDescription = textAndPage }) { Text("Aa", fontSize = 20.sp) }
@@ -421,13 +527,15 @@ internal fun Reading(path: String, onClose: () -> Unit) {
                     var drag by remember { mutableStateOf<Float?>(null) }
                     val place = stringResource(R.string.place_in_the_book)
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton({ go(chapter - 1, 0f) }, enabled = chapter > 0) { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, stringResource(R.string.previous_chapter)) }
+                        IconButton({ jump(chapter - 1, 0f) }, enabled = chapter > 0) { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowLeft, stringResource(R.string.previous_chapter)) }
                         Slider(drag ?: progress, { drag = it }, Modifier.weight(1f).semantics { contentDescription = place },
-                            onValueChangeFinished = { drag?.let { v -> val (c, f) = book.locate(v); go(c, f) }; drag = null })
-                        IconButton({ go(chapter + 1, 0f) }, enabled = chapter < book.spine.lastIndex) { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, stringResource(R.string.next_chapter)) }
+                            onValueChangeFinished = { drag?.let { v -> val (c, f) = book.locate(v); jump(c, f) }; drag = null })
+                        IconButton({ jump(chapter + 1, 0f) }, enabled = chapter < book.spine.lastIndex) { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, stringResource(R.string.next_chapter)) }
                     }
-                    Text(stringResource(R.string.chapter_d_of_d, chapter + 1, book.spine.size) + "  ·  " + (drag?.let { "${(it * 100).roundToInt()}%" } ?: percent),
-                        Modifier.fillMaxWidth().padding(bottom = 8.dp), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
+                    // the place, and a tap on it to type one
+                    TextButton({ sheet = "goto" }, Modifier.align(Alignment.CenterHorizontally)) {
+                        Text(stringResource(R.string.chapter_d_of_d, chapter + 1, book.spine.size) + "  ·  " + (drag?.let { "${(it * 100).roundToInt()}%" } ?: percent) + "  ·  " + stringResource(R.string.go_to))
+                    }
                 }
             }
         }
@@ -436,19 +544,41 @@ internal fun Reading(path: String, onClose: () -> Unit) {
     // fully open at once: half open, the lower options sit off screen in landscape
     val whole = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     if (sheet == "contents") ModalBottomSheet({ sheet = null }, sheetState = whole) {
-        Text(stringResource(R.string.contents), Modifier.padding(horizontal = 24.dp, vertical = 8.dp).semantics { heading() }, style = MaterialTheme.typography.titleLarge)
+        var tab by remember { mutableStateOf("contents") }
+        Row(Modifier.padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(tab == "contents", { tab = "contents" }, { Text(stringResource(R.string.contents)) })
+            FilterChip(tab == "marks", { tab = "marks" }, { Text(stringResource(R.string.bookmarks) + if (marks.isEmpty()) "" else " (${marks.size})") })
+        }
         // a book without a contents list still has its chapters
         val list = book.toc.ifEmpty { book.spine.mapIndexed { i, e -> stringResource(R.string.chapter_d, i + 1) to e } }
         LazyColumn {
-            items(list) { (label, to) ->
+            if (tab == "contents") items(list) { (label, to) ->
                 val i = book.spine.indexOf(to.substringBefore('#'))
-                Text(label, Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(enabled = i >= 0) { go(i, 0f, to.substringAfter('#', "").ifEmpty { null }); sheet = null; bars = false }
+                Text(label, Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(enabled = i >= 0) { jump(i, 0f, to.substringAfter('#', "").ifEmpty { null }); sheet = null; bars = false }
                     .padding(horizontal = 24.dp, vertical = 12.dp), fontWeight = if (i == chapter) FontWeight.Bold else null)
+            }
+            else {
+                if (marks.isEmpty()) item { Text(stringResource(R.string.no_bookmarks_yet), Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                items(marks) { m ->
+                    Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { jump(m.chapter, m.inChapter); sheet = null; bars = false }.padding(horizontal = 24.dp, vertical = 12.dp)) {
+                        Text(m.label, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("${(m.progress * 100).roundToInt()}%", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
         }
     }
+    if (sheet == "goto") {
+        var typed by remember { mutableStateOf("") }
+        val to = typed.toFloatOrNull()?.takeIf { it in 0f..100f }
+        AlertDialog({ sheet = null }, title = { Text(stringResource(R.string.go_to)) },
+            text = { OutlinedTextField(typed, { typed = it }, singleLine = true, label = { Text(stringResource(R.string.percent_0_100)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)) },
+            confirmButton = { TextButton({ val (c, f) = book.locate(to!! / 100); jump(c, f); sheet = null; bars = false }, enabled = to != null) { Text(stringResource(R.string.go)) } },
+            dismissButton = { TextButton({ sheet = null }) { Text(stringResource(android.R.string.cancel)) } })
+    }
     if (sheet == "look") ModalBottomSheet({ sheet = null }, sheetState = whole) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Brightness(shelf, onScreen)
             LookOptions(look, ::restyle)
             Spacer(Modifier.height(8.dp))
         }

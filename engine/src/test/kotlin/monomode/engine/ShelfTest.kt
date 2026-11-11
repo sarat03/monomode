@@ -35,4 +35,43 @@ class ShelfTest {
         assertEquals("author", shelf.sort)
         assertEquals(false, shelf.colour)
     }
+
+    @Test fun `bookmarks are listed in reading order, per book`() {
+        assertEquals(emptyList(), shelf.marks("/b/one.epub"))
+        shelf.toggleMark("/b/one.epub", chapter = 3, from = 0.5f, until = 0.6f, progress = 0.7f, label = "Landfall")
+        clock = 2_000L
+        shelf.toggleMark("/b/one.epub", chapter = 1, from = 0.2f, until = 0.3f, progress = 0.1f, label = "Setting | Out")
+        shelf.toggleMark("/b/two.epub", chapter = 0, from = 0f, until = 1f, progress = 0f, label = "x")
+        assertEquals(listOf(Mark(1, 0.2f, 0.1f, "Setting | Out", 2_000L), Mark(3, 0.5f, 0.7f, "Landfall", 1_000L)), shelf.marks("/b/one.epub"))
+    }
+
+    @Test fun `marking a page that holds a bookmark removes it, wherever on the page it was made`() {
+        shelf.toggleMark("/b/one.epub", chapter = 1, from = 0.25f, until = 0.5f, progress = 0.1f, label = "a")
+        // text made larger since: the same place now sits on a page that starts earlier
+        assertEquals(Mark(1, 0.25f, 0.1f, "a", 1_000L), shelf.markOn("/b/one.epub", chapter = 1, from = 0.2f, until = 0.3f))
+        assertNull(shelf.markOn("/b/one.epub", chapter = 1, from = 0.3f, until = 0.4f))
+        assertNull(shelf.markOn("/b/one.epub", chapter = 2, from = 0.2f, until = 0.3f))
+        shelf.toggleMark("/b/one.epub", chapter = 1, from = 0.2f, until = 0.3f, progress = 0.1f, label = "b")
+        assertEquals(emptyList(), shelf.marks("/b/one.epub"))
+    }
+
+    @Test fun `text options are part of the look and start off`() {
+        val plain = shelf.look(dark = false)
+        assertEquals(listOf(false, false, false, false), listOf(plain.bold, plain.justify, plain.hyphens, plain.indent))
+        shelf.setLook(plain.copy(bold = true, hyphens = true))
+        assertEquals(plain.copy(bold = true, hyphens = true), shelf.look(dark = false))
+    }
+
+    @Test fun `reading choices have e-reader defaults and keep what was chosen`() {
+        assertNull(shelf.brightness) // the phone's own
+        assertEquals(false, shelf.keepOn)
+        assertEquals("auto", shelf.orientation)
+        assertEquals(true, shelf.volumeKeys)
+        assertEquals(setOf("title", "page", "percent"), shelf.status)
+        shelf.brightness = 0.2f; shelf.keepOn = true; shelf.orientation = "portrait"; shelf.volumeKeys = false; shelf.status = setOf("clock")
+        assertEquals(listOf(0.2f, true, "portrait", false, setOf("clock")), listOf(shelf.brightness, shelf.keepOn, shelf.orientation, shelf.volumeKeys, shelf.status))
+        shelf.brightness = null; shelf.status = emptySet()
+        assertNull(shelf.brightness)
+        assertEquals(emptySet(), shelf.status)
+    }
 }

@@ -9,7 +9,10 @@ import android.graphics.Canvas
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
+import android.view.KeyEvent
 import android.view.View
+import android.view.WindowManager
+import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.os.BatteryManager
 import android.os.Bundle
@@ -163,13 +166,32 @@ class HomeActivity : ComponentActivity() {
         if (mode == Profile.E_READER && readerPkg != BUILT_IN_READER && homePressed) open(readerPkg)
         homePressed = false
         resumes++
-        applyColour()
+        applyScreen()
     }
 
-    /** "Colour" off in the reader's settings: this screen is drawn through a filter that removes all colour. Only MonoMode's own reader; the phone-wide grey is the mode's own option. */
-    private fun applyColour() {
-        val grey = mode == Profile.E_READER && reader == null && !Records.shelf(this).colour
+    // the volume keys turn the page while a book is open, as the buttons of an e-reader do
+    private fun turnsPage(key: Int) = (key == KeyEvent.KEYCODE_VOLUME_DOWN || key == KeyEvent.KEYCODE_VOLUME_UP) && reading != null && pageTurner != null && Records.shelf(this).volumeKeys
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean =
+        if (turnsPage(keyCode)) { pageTurner?.invoke(keyCode == KeyEvent.KEYCODE_VOLUME_DOWN); true } else super.onKeyDown(keyCode, event)
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean = turnsPage(keyCode) || super.onKeyUp(keyCode, event) // or the phone still beeps
+
+    /**
+     * The reader's own choices about the screen, applied to this window only and only for MonoMode's own reader:
+     * grey (drawn through a filter that removes all colour; the phone-wide grey is the mode's own option),
+     * brightness, orientation, and staying on while a book is open.
+     */
+    private fun applyScreen() {
+        val shelf = Records.shelf(this)
+        val own = mode == Profile.E_READER && reader == null
+        val grey = own && !shelf.colour
         window.decorView.setLayerType(if (grey) View.LAYER_TYPE_HARDWARE else View.LAYER_TYPE_NONE, if (grey) Paint().apply { colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) }) } else null)
+        window.attributes = window.attributes.apply { screenBrightness = (if (own) shelf.brightness else null) ?: WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
+        if (own && reading != null && shelf.keepOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        requestedOrientation = when (if (own) shelf.orientation else "auto") {
+            "portrait" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            "landscape" -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
     }
 
     /** Opens [b] in KOReader at the page it was left on; KOReader alone if it turns the book down. */
@@ -202,9 +224,9 @@ class HomeActivity : ComponentActivity() {
     private fun ReaderHome() = AppTheme {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             val path = reading
-            if (path != null) key(path) { Reading(path) { reading = null; resumes++ } }
+            if (path != null) key(path) { Reading(path, ::applyScreen) { reading = null; resumes++; applyScreen() } }
             // the other apps and MonoMode live in Settings, not under the books: a growing library would push them out of reach
-            else if (settings) ReaderSettings(::applyColour, { settings = false }) {
+            else if (settings) ReaderSettings(::applyScreen, { settings = false }) {
                 if (apps.isNotEmpty()) Text(getString(R.string.other_apps), Modifier.padding(top = 12.dp).semantics { heading() }, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                 for (a in apps) Text(a.label, Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { open(a.pkg) }.padding(vertical = 12.dp), style = MaterialTheme.typography.bodyLarge)
                 Text(getString(R.string.monomode), Modifier.padding(top = 12.dp).semantics { heading() }, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
@@ -220,7 +242,7 @@ class HomeActivity : ComponentActivity() {
                     Text("$batteryLevel%", style = MaterialTheme.typography.labelLarge)
                     IconButton({ settings = true }) { Icon(Icons.Outlined.Settings, getString(R.string.settings)) }
                 }
-                Library(resumes) { reading = it }
+                Library(resumes) { reading = it; applyScreen() }
             }
         }
     }
