@@ -9,14 +9,19 @@ import java.util.zip.ZipFile
 private fun attr(tag: String, name: String) = Regex("""\b$name\s*=\s*["']([^"']*)["']""").find(tag)?.groupValues?.get(1)
 
 private val ENTITIES = mapOf("amp" to "&", "lt" to "<", "gt" to ">", "quot" to "\"", "apos" to "'", "nbsp" to " ")
-/** Text of an XML element: tags dropped, entities decoded, whitespace collapsed. */
-private fun plain(xml: String) = xml.replace(Regex("<[^>]*>"), "")
+/** The text of some XML as a browser's textContent gives it: tags dropped with nothing put in their place, entities decoded. */
+private fun shown(xml: String) = xml.replace(Regex("<[^>]*>"), "")
     .replace(Regex("&(#x?[0-9a-fA-F]+|\\w+);")) { m ->
         val e = m.groupValues[1]
         (if (e.startsWith("#x")) e.drop(2).toIntOrNull(16)?.let { String(Character.toChars(it)) }
         else if (e.startsWith("#")) e.drop(1).toIntOrNull()?.let { String(Character.toChars(it)) }
         else ENTITIES[e]) ?: m.value
-    }.replace(Regex("\\s+"), " ").trim()
+    }
+/** Text of an XML element for showing in a list: as [shown], with whitespace collapsed. */
+private fun plain(xml: String) = shown(xml).replace(Regex("\\s+"), " ").trim()
+
+/** One place a search found: the [nth] match (from 0) in the text of [chapter], with the words around it. */
+data class Hit(val chapter: Int, val nth: Int, val snippet: String)
 
 /**
  * An EPUB book, read straight from its zip: the OPF package file names the title, the files and their reading order.
@@ -71,6 +76,41 @@ class Epub(val file: File) : Closeable {
 
     /** The type the book declares for [entry], e.g. application/xhtml+xml; null for a file outside the manifest. */
     fun mediaType(entry: String): String? = items.values.firstOrNull { it.first == entry }?.second?.ifEmpty { null }
+
+    /**
+     * Every place [query] occurs, ignoring case, at most 200. The text searched is each chapter's body as the page's own
+     * script reads it (textContent), so the page can find the same [Hit.nth] match again and turn to it.
+     */
+    fun search(query: String): List<Hit> {
+        if (query.isBlank()) return emptyList()
+        return spine.asSequence().flatMapIndexed { chapter, entry ->
+            val body = shown(Regex("<body[^>]*>(.*)</body>", setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)).find(text(entry).orEmpty())?.groupValues?.get(1).orEmpty())
+            generateSequence(body.indexOf(query, ignoreCase = true)) { body.indexOf(query, it + 1, ignoreCase = true) }.takeWhile { it >= 0 }.mapIndexed { nth, at ->
+                Hit(chapter, nth, body.substring((at - 40).coerceAtLeast(0), (at + query.length + 40).coerceAtMost(body.length)).replace(Regex("\\s+"), " ").trim())
+            }
+        }.take(200).toList()
+    }
+
+    /**
+     * The text of the footnote a link to [target] ("zip entry#anchor") points at, or null when the target is not a
+     * short passage (a heading, a long section, nothing), in which case the link is an ordinary jump.
+     * shortcut: a note is cut at the first closing tag of its own kind, so a note with a block of the same kind nested in it shows its first part only.
+     */
+    fun note(target: String): String? {
+        val id = target.substringAfter('#', "").ifEmpty { return null }
+        val html = text(target.substringBefore('#')) ?: return null
+        val open = Regex("<(\\w+)\\b[^>]*\\bid\\s*=\\s*[\"']${Regex.escape(id)}[\"'][^>]*>").find(html) ?: return null
+        var tag = open.groupValues[1].lowercase()
+        var from = open.range.first
+        if (tag in setOf("a", "span", "sup", "sub", "b", "i", "em", "strong")) {
+            // the id sits on the note's number or back-link: the note is the block around it
+            val block = Regex("<(p|li|div|aside|dd|td|section)\\b[^>]*>", RegexOption.IGNORE_CASE).findAll(html.substring(0, from)).lastOrNull() ?: return null
+            tag = block.groupValues[1].lowercase(); from = block.range.first
+        }
+        if (tag.matches(Regex("h[1-6]|body|html"))) return null
+        val end = html.indexOf("</$tag", from, ignoreCase = true).takeIf { it > 0 } ?: return null
+        return plain(html.substring(from, end)).takeIf { it.isNotEmpty() && it.length <= 800 }
+    }
 
     /** The cover image file. EPUB 3 marks the item with properties="cover-image"; EPUB 2 names its id in <meta name="cover">. */
     fun cover(): ByteArray? {

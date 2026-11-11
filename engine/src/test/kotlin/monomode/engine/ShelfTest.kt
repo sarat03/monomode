@@ -74,4 +74,30 @@ class ShelfTest {
         assertNull(shelf.brightness)
         assertEquals(emptySet(), shelf.status)
     }
+
+    @Test fun `tap layout and scrolling instead of pages keep their choice`() {
+        assertEquals("sides", shelf.taps)
+        assertEquals(false, shelf.look(dark = false).scroll)
+        shelf.taps = "forward"
+        shelf.setLook(shelf.look(dark = false).copy(scroll = true, indent = true))
+        assertEquals("forward", shelf.taps)
+        assertEquals(listOf(true, true, false), shelf.look(dark = false).let { listOf(it.scroll, it.indent, it.bold) })
+    }
+
+    @Test fun `highlights are kept in reading order with their text, per book`() {
+        shelf.addQuote("/b/one.epub", chapter = 2, start = 40, end = 52, text = "grey | water\nand more")
+        clock = 2_000L
+        shelf.addQuote("/b/one.epub", chapter = 0, start = 7, end = 9, text = "ab")
+        shelf.addQuote("/b/two.epub", chapter = 0, start = 1, end = 2, text = "x")
+        assertEquals(listOf(Quote(0, 7, 9, "ab", "", 2_000L), Quote(2, 40, 52, "grey | water\nand more", "", 1_000L)), shelf.quotes("/b/one.epub"))
+    }
+
+    @Test fun `a highlight can carry a note, and can be removed`() {
+        shelf.addQuote("/b/one.epub", chapter = 0, start = 7, end = 9, text = "ab")
+        shelf.addQuote("/b/one.epub", chapter = 1, start = 1, end = 5, text = "cdef")
+        shelf.setNote("/b/one.epub", shelf.quotes("/b/one.epub")[0], "why | this\nmatters")
+        assertEquals(listOf("why | this\nmatters", ""), shelf.quotes("/b/one.epub").map { it.note })
+        shelf.removeQuote("/b/one.epub", shelf.quotes("/b/one.epub")[0])
+        assertEquals(listOf("cdef"), shelf.quotes("/b/one.epub").map { it.text })
+    }
 }

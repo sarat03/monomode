@@ -79,4 +79,40 @@ class EpubTest {
         File(dir, "lib/Books/notes.txt").writeText("x")
         assertEquals(listOf(found), findEpubs(File(dir, "lib")))
     }
+
+    private fun chapter(body: String) = "<html><head><title>albatross in the title</title></head><body>$body</body></html>"
+
+    @Test fun `search finds words in the text of every chapter, whatever their case, counting matches per chapter`() = Epub(epub(two,
+        "OEBPS/text/a b.xhtml" to chapter("<p>An Albatross flew.</p><p>Then a second albatross came, far out over the grey water.</p>"),
+        "OEBPS/text/b.xhtml" to chapter("<p>No birds here.</p><p>Only one ALBATROSS.</p>"),
+    )).use { b ->
+        assertEquals(listOf(Hit(0, 0, "An Albatross flew.Then a second albatross came, far"), Hit(0, 1, "An Albatross flew.Then a second albatross came, far out over the grey water."), Hit(1, 0, "No birds here.Only one ALBATROSS.")), b.search("albatross"))
+        assertEquals(emptyList(), b.search("penguin"))
+        assertEquals(emptyList(), b.search("  "))
+    }
+
+    @Test fun `search reads text the way the page shows it - across markup, with entities decoded`() = Epub(epub(two,
+        "OEBPS/text/a b.xhtml" to chapter("<p>Tom &amp; Jerry saw an <i>alba</i>tross.</p>"),
+    )).use { b ->
+        assertEquals(1, b.search("albatross").size)
+        assertEquals(listOf(Hit(0, 0, "Tom & Jerry saw an albatross.")), b.search("tom & jerry"))
+    }
+
+    private val notes = chapter(
+        "<h2 id=\"part\">Part One</h2><p>Text<a href=\"#fn1\">1</a>.</p>" +
+        "<aside id=\"fn1\"><p>1. Landfall means <i>sighting</i> the shore.</p></aside>" +
+        "<p><a id=\"fn2\" href=\"#r2\">2</a> A note whose id sits on its back-link.</p>" +
+        "<p id=\"long\">" + "word ".repeat(200) + "</p>")
+
+    @Test fun `a link to a short passage is a footnote - its text is read out of the chapter`() = Epub(epub(two, "OEBPS/text/b.xhtml" to notes)).use { b ->
+        assertEquals("1. Landfall means sighting the shore.", b.note("OEBPS/text/b.xhtml#fn1"))
+        assertEquals("2 A note whose id sits on its back-link.", b.note("OEBPS/text/b.xhtml#fn2"))
+    }
+
+    @Test fun `a link to a heading, a long passage, or nowhere is not a footnote`() = Epub(epub(two, "OEBPS/text/b.xhtml" to notes)).use { b ->
+        assertNull(b.note("OEBPS/text/b.xhtml#part"))
+        assertNull(b.note("OEBPS/text/b.xhtml#long"))
+        assertNull(b.note("OEBPS/text/b.xhtml#missing"))
+        assertNull(b.note("OEBPS/text/b.xhtml"))
+    }
 }
