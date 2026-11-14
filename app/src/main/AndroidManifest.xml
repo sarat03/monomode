@@ -25,6 +25,9 @@
          nothing leaves the phone. -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
+    <!-- Mute notifications: Do Not Disturb set by MonoMode itself, once the user allows Do Not Disturb access. -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"

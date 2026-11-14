@@ -94,7 +94,6 @@ import monomode.engine.Finding
 import monomode.engine.KOREADER
 import monomode.engine.Level
 import monomode.engine.Method
-import monomode.engine.OWN_HOME
 import monomode.engine.Profile
 import monomode.engine.Risk
 import monomode.engine.parseList
@@ -132,6 +131,7 @@ class MainActivity : ComponentActivity() {
             open = { Session.open(app) }, debloat = Records.debloater(app), modes = Records.modes(app),
             wirelessOn = { Session.isWirelessDebuggingOn(app) }, saveCopy = { Records.copyToDownloads(app, it) }, onChange = { ps = it },
             switchOff = { if (Session.canSwitch(app)) Session.switch(app, false) },
+            local = { runLocally(app, it) }, paired = { Pairing.isPaired(app) }, switchOn = { Session.canSwitch(app) && Session.switch(app, true) },
         ).also { phone = it }
     }
 
@@ -160,14 +160,19 @@ class MainActivity : ComponentActivity() {
 
     /** All files access, reread on return from its Settings page. */
     private var allFiles by mutableStateOf(false)
+    /** The one-time setup is done: MonoMode holds the permission to change settings itself. Reread on return. */
+    private var setUp by mutableStateOf(false)
+    /** Android's Do Not Disturb access, which Mute notifications uses. Reread on return from its Settings page. */
+    private var dnd by mutableStateOf(false)
 
     override fun onResume() {
         super.onResume()
         allFiles = Environment.isExternalStorageManager()
+        setUp = Session.canSwitch(this)
+        dnd = dndAccess(this)
         paired = Pairing.isPaired(this)
-        // MonoMode switches Wireless debugging on itself once it holds the permission; otherwise the user does, in Developer options
-        if (paired && !Session.isWirelessDebuggingOn(this) && Session.canSwitch(this)) Session.switch(this, true)
-        // paired and Wireless debugging on: connects and checks straight away, no Start button
+        // Wireless debugging stays off: an action that needs it switches it on for itself. Already on (just paired):
+        // connects once, which also finishes the setup by granting MonoMode its permission
         ph.refresh(paired)
     }
 
@@ -207,16 +212,16 @@ class MainActivity : ComponentActivity() {
             ps.message?.let { Note(it) }
             when {
                 tab == Page.SETTINGS -> Paged(getString(R.string.settings)) { SettingsPage() }
-                ps.connected -> SessionScreen()
-                !paired -> PairScreen()
-                else -> StartScreen()
+                // only when something the user asked for needs Wireless debugging and it was never set up
+                ps.needsSetup -> PairScreen()
+                else -> SessionScreen()
             }
         } }
     }
 
     /** Tablet width with a session: the rail replaces Home's tool rows and the pages' back arrows. */
     @Composable
-    private fun rail() = ps.connected && currentWindowAdaptiveInfo().windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
+    private fun rail() = currentWindowAdaptiveInfo().windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
 
     @Composable
     private fun PairScreen() = Column(Modifier.widthIn(max = 600.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -236,24 +241,8 @@ class MainActivity : ComponentActivity() {
             Pairing.prompt(this@MainActivity)
             openDeveloperOptions()
         }, Modifier.fillMaxWidth().heightIn(min = 56.dp)) { Text(if (dev) getString(R.string.start_pairing) else getString(R.string.open_about_phone)) }
-    }
-
-    @Composable
-    private fun StartScreen() = Column(Modifier.widthIn(max = 600.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        AppHeader()
-        Hero(
-            neutralTone(), if (ps.wirelessOn) Icons.Outlined.CheckCircle else Icons.Outlined.Info,
-            if (ps.wirelessOn) getString(R.string.ready) else getString(R.string.not_connected),
-            if (ps.wirelessOn) getString(R.string.connecting_to_this_phone) else getString(R.string.turn_on_wireless_debugging_then),
-        )
-        if (!ps.wirelessOn) Button(::openDeveloperOptions, Modifier.fillMaxWidth().heightIn(min = 56.dp)) {
-            Text(if (devOptionsOn()) getString(R.string.open_developer_options) else getString(R.string.open_about_phone))
-        }
-        if (!ps.wirelessOn && !devOptionsOn()) Text(getString(R.string.developer_options_are_hidden_in),
-            Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        // Retry looks again for Wireless debugging, then connects and checks; shown per PhoneState.retryShown
-        if (ps.retryShown) OutlinedButton(ph::connect, Modifier.fillMaxWidth().heightIn(min = 48.dp), enabled = ps.busy == null) { Text(getString(R.string.retry)) }
-        ps.activeMode?.let { HomeRowStatic(getString(R.string.s_1x_is_on, it.label), getString(R.string.connect_to_change_it_or)) }
+        BackHandler(onBack = ph::cancelSetup)
+        TextButton(ph::cancelSetup, Modifier.fillMaxWidth()) { Text(getString(R.string.not_now)) }
     }
 
     /** App name on the left, settings gear on the right. */
@@ -264,14 +253,6 @@ class MainActivity : ComponentActivity() {
         }
         Text(getString(R.string.monomode), Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.headlineMedium)
         if (!rail()) IconButton({ tab = Page.SETTINGS }) { Icon(Icons.Outlined.Settings, getString(R.string.settings)) }
-    }
-
-    @Composable
-    private fun HomeRowStatic(title: String, state: String) = Panel(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(state, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
     }
 
     @Composable
@@ -401,8 +382,8 @@ class MainActivity : ComponentActivity() {
         // tablets reach the tools from the rail
         if (!rail()) {
             Section(getString(R.string.tools))
-            HomeRow(AppIcons.Shield, getString(R.string.network_access), if (r == null) getString(R.string.see_which_apps_use_the) else if (look == 0) getString(R.string.nothing_to_look_at) else getString(R.string.s_1x_to_look_at, look)) { tab = Page.CHECK }
-            HomeRow(AppIcons.Broom, getString(R.string.app_cleaner), if (ps.removed.isEmpty()) getString(R.string.remove_bloatware_and_unused_apps) else getString(R.string.s_1x_removed_or_disabled, ps.removed.size)) { tab = Page.CLEAN }
+            HomeRow(AppIcons.Shield, getString(R.string.network_access), if (r == null) getString(R.string.see_which_apps_use_the) else if (look == 0) getString(R.string.nothing_to_look_at) else getString(R.string.s_1x_to_look_at, look), getString(R.string.uses_wireless_debugging_each_time)) { tab = Page.CHECK }
+            HomeRow(AppIcons.Broom, getString(R.string.app_cleaner), if (ps.removed.isEmpty()) getString(R.string.remove_bloatware_and_unused_apps) else getString(R.string.s_1x_removed_or_disabled, ps.removed.size), getString(R.string.uses_wireless_debugging_each_time)) { tab = Page.CLEAN }
         }
         val w = warnTone()
         Card(colors = CardDefaults.cardColors(w.bg, w.fg), modifier = Modifier.fillMaxWidth()) {
@@ -415,7 +396,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun HomeRow(icon: ImageVector, title: String, state: String, open: () -> Unit) = Panel(Modifier.fillMaxWidth().clickable(onClick = open)) {
+    private fun HomeRow(icon: ImageVector, title: String, state: String, need: String? = null, open: () -> Unit) = Panel(Modifier.fillMaxWidth().clickable(onClick = open)) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Box(Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
                 Icon(icon, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
@@ -423,6 +404,7 @@ class MainActivity : ComponentActivity() {
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleMedium)
                 Text(state, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                need?.let { NeedLine(it) }
             }
             Icon(Icons.Outlined.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -644,13 +626,17 @@ class MainActivity : ComponentActivity() {
                 kioskApp?.let { (component, label) -> OutlinedButton({ ph.pin(component, label) }, enabled = ps.busy == null) { Text(getString(R.string.pin_again), color = t.fg) } }
             }
             else Button({
+                // Mute needs Do Not Disturb access; ask for it unless the one-time setup is due first anyway (it covers Mute too)
+                val chosen = profile.options.keys.filter { it !in off }
+                val setupDue = !setUp && (profile == Profile.KIOSK || chosen.any { !profile.mutes(it) })
+                if (!dnd && !setupDue && chosen.any { profile.mutes(it) }) return@Button askDnd()
                 entering = profile == Profile.E_READER
                 // Kiosk is one step: settings, then its app pinned, then Wireless debugging off
                 if (profile == Profile.KIOSK) kioskApp?.let { (component, label) -> ph.turnOnKiosk(component, label) } else ph.turnOn(profile)
             }, enabled = ps.busy == null && on == null && (profile != Profile.KIOSK || kioskApp != null)) { Text(getString(if (profile == Profile.E_READER) R.string.enter_e_reader else R.string.turn_on)) }
             if (on != profile) TextButton({ modes.uninstall(profile); installed = modes.installed; openMode = null; tab = Page.HOME }, enabled = ps.busy == null) { Text(getString(R.string.uninstall), color = t.fg) }
         }
-        // straight into the reader once the mode is on, as switching on an e-reader does; named directly, so it also works with "Own home screen" off
+        // straight into the reader once the mode is on, as switching on an e-reader does
         LaunchedEffect(on) {
             if (entering && on == Profile.E_READER) { entering = false; startActivity(Intent(this@MainActivity, HomeActivity::class.java).putExtra(EXTRA_LIBRARY, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
         }
@@ -661,7 +647,12 @@ class MainActivity : ComponentActivity() {
                     if (keep) off -= option else off += option
                     modes.setOff(profile, off.toSet())
                 }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(option, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                    Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+                        Text(option, style = MaterialTheme.typography.bodyLarge)
+                        // what the option needs first, until it is done; tapping the Do Not Disturb line opens that permission
+                        if (profile.mutes(option)) { if (!dnd) NeedLine(getString(R.string.needs_dnd_access_once), ::askDnd) }
+                        else if (!setUp) NeedLine(getString(R.string.needs_wireless_debugging_once))
+                    }
                     // drawn enabled even while locked: a disabled "on" switch looks off; the row itself ignores taps then
                     Switch(option !in off, null)
                 }
@@ -669,18 +660,28 @@ class MainActivity : ComponentActivity() {
             }
         }
         if (on == profile) Text(getString(R.string.turn_the_mode_off_to), Modifier.padding(horizontal = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (OWN_HOME in profile.options && OWN_HOME !in off) { Section(getString(R.string.apps)); HomePicker(profile) }
-        if (profile == Profile.KIOSK) { Section(getString(R.string.kiosk_app)); KioskAppPicker(askPin = "Ask for PIN to unpin" !in off) }
+        if (profile == Profile.E_READER) { Section(getString(R.string.apps)); ReadingApp() }
+        if (profile == Profile.KIOSK) {
+            Section(getString(R.string.kiosk_app))
+            NeedLine(getString(R.string.pinning_uses_wireless_debugging_each_time))
+            KioskAppPicker(askPin = "Ask for PIN to unpin" !in off)
+        }
     }
 
-    /** Which apps the mode's home screen shows; editable any time, the home screen rereads it on return. */
+    /** The second line under an option or tool: what it needs from the user, or that it uses Wireless debugging each time. */
     @Composable
-    private fun HomePicker(profile: Profile) {
-        var open by remember { mutableStateOf(false) }
-        val picked = remember { mutableStateListOf(*modes.apps(profile).toTypedArray()) }
+    private fun NeedLine(text: String, onClick: (() -> Unit)? = null) = Text(text,
+        if (onClick == null) Modifier else Modifier.clickable(onClickLabel = getString(R.string.allow), onClick = onClick).padding(vertical = 4.dp),
+        style = MaterialTheme.typography.bodySmall, color = if (onClick == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary)
+
+    private fun askDnd() = startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
+
+    /** The e-reader's reading app: MonoMode's own reader or another one, and KOReader's current book. */
+    @Composable
+    private fun ReadingApp() {
         val all = remember { launcherApps(this) }
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (profile == Profile.E_READER) {
+            run {
                 val readers = remember { listOf(packageName to getString(R.string.monomode_reader)) + all }
                 var reader by remember { mutableStateOf(modes.reader(all.map { it.first })) }
                 var choose by remember { mutableStateOf(false) }
@@ -695,15 +696,6 @@ class MainActivity : ComponentActivity() {
                 // KOReader's last book is in its own files on shared storage; only All files access can read them
                 if (reader == KOREADER) ListRow(getString(R.string.show_the_current_book), getString(if (allFiles) R.string.title_cover_and_progress_on else R.string.needs_all_files_access)) {
                     startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:$packageName")))
-                }
-            }
-            val names = all.filter { it.first in picked }.joinToString { it.second }
-            ListRow(getString(R.string.other_apps), names.ifEmpty { getString(R.string.none_chosen) }) { open = true }
-            if (open) ListDialog(getString(R.string.other_apps), null, { open = false }, search = true) { q ->
-                items(all.filter { it.matches(q) }, key = { it.first }) { (pkg, label) ->
-                    Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).toggleable(pkg in picked, role = Role.Checkbox) { if (it) picked += pkg else picked -= pkg; modes.setApps(profile, picked.toSet()) }, verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(pkg in picked, null); Spacer(Modifier.width(12.dp)); AppIcon(pkg); Text(label, Modifier.padding(start = 12.dp))
-                    }
                 }
             }
         }

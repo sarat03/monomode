@@ -13,11 +13,8 @@ private const val DND_ON = "priority"
 private val ZEN_TO_DND = mapOf("0" to "off", "1" to "priority", "2" to "on", "3" to "alarms")
 
 private const val HOME = "home"
-/** MonoMode's own home screen, showing only the apps picked for the mode that is on. */
+/** MonoMode's own home screen. No mode sets it any more; restore still puts back the launcher an older version replaced. */
 const val MODE_HOME = "io.github.sarat03.monomode/.HomeActivity"
-private val ownHome = Change(HOME, "activity", MODE_HOME)
-/** The option that gives a mode its own home screen; the home screen reads it to know whether the mode is its business. */
-const val OWN_HOME = "Own home screen"
 
 private val grayscale = listOf(
     Change("secure", "accessibility_display_daltonizer_enabled", "1"),
@@ -55,10 +52,12 @@ enum class Profile(val options: Map<String, List<Change>>, val whenOff: Map<Stri
         "No animations" to noAnimations,
         "Mute notifications" to listOf(muted),
         "Battery saver" to batterySaver,
-        OWN_HOME to listOf(ownHome),
     ));
 
     val changes get() = always + options.values.flatten()
+
+    /** True when [option] is only Do Not Disturb, which needs Android's Do Not Disturb access instead of the one-time setup. */
+    fun mutes(option: String) = options[option].orEmpty().all { it.ns == DND }
 }
 
 private fun Shell.read(c: Change): String =

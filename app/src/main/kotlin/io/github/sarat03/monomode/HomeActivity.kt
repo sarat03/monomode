@@ -115,7 +115,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import monomode.engine.OWN_HOME
 import monomode.engine.Profile
 import java.text.DateFormat
 import java.util.Date

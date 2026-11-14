@@ -158,6 +158,37 @@ class PhoneTest {
         assertNull(phone.state.message)
     }
 
+    @Test fun `a mode whose settings the app can write itself turns on and off with no link at all`() {
+        var opened = 0
+        val p = Phone(open = { opened++; link }, debloat = Debloat(File(dir, "l.txt")), modes = Modes(dir, ModesTest.MapStore()),
+            wirelessOn = { false }, background = { it() }, local = { a -> settings.run(a) })
+        p.turnOn(Profile.E_READER)
+        assertEquals(Profile.E_READER, p.state.activeMode)
+        assertEquals("1", settings.values["global zen_mode"])
+        p.turnOff()
+        assertNull(p.state.activeMode)
+        assertEquals(0, opened)
+    }
+
+    @Test fun `what the app cannot run itself asks for the one-time setup when not paired`() {
+        phone.turnOnKiosk("com.example/.Main", "Example")
+        assertTrue(phone.state.needsSetup)
+        assertNull(phone.state.activeMode)
+        phone.cancelSetup()
+        assertFalse(phone.state.needsSetup)
+    }
+
+    @Test fun `paired, an action opens Wireless debugging for that action alone and keeps what it found`() {
+        wireless = false
+        val p = Phone(open = { link }, debloat = Debloat(File(dir, "m.txt")), modes = Modes(dir, ModesTest.MapStore()),
+            wirelessOn = { wireless }, background = { it() }, paired = { true }, switchOn = { wireless = true; true })
+        p.check()
+        assertNotNull(p.state.results)
+        assertTrue(link.finished) // switched off again right after
+        assertFalse(p.state.connected)
+        assertNull(p.state.message)
+    }
+
     @Test fun `actions without a session do nothing`() {
         phone.check()
         phone.turnOn(Profile.KIOSK)

@@ -69,12 +69,15 @@ class ProfileTest {
         assertEquals("com.oppo.launcher/.Launcher", sh.values["home activity"])
     }
 
-    @Test fun `own home screen replaces the launcher until restore`() {
-        val sh = FakeSettings(start); val r = rec()
-        applyProfile(sh, Profile.E_READER, r)
-        assertEquals(MODE_HOME, sh.values["home activity"])
-        restoreProfile(sh, r)
+    @Test fun `the e-reader leaves the launcher alone, its reader opens like an app`() {
+        val sh = FakeSettings(start)
+        applyProfile(sh, Profile.E_READER, rec())
         assertEquals("com.oppo.launcher/.Launcher", sh.values["home activity"])
+    }
+
+    @Test fun `only Mute notifications needs Do Not Disturb access`() {
+        assertEquals(listOf("Mute notifications"), Profile.E_READER.options.keys.filter { Profile.E_READER.mutes(it) })
+        assertEquals(listOf("Mute notifications"), Profile.KIOSK.options.keys.filter { Profile.KIOSK.mutes(it) })
     }
 
     @Test fun `kiosk asks for the PIN to unpin, or turned off, explicitly does not`() {

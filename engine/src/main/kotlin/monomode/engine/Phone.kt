@@ -32,6 +32,8 @@ data class PhoneState(
     val activeMode: Profile? = null,
     /** A pin switched Wireless debugging off; cleared by the next connection. */
     val afterPin: Boolean = false,
+    /** Something the user asked for needs Wireless debugging, and the one-time setup is not done yet. */
+    val needsSetup: Boolean = false,
 ) {
     /** Retry only helps after an error, or after a pin ended the session; otherwise coming back connects by itself. */
     val retryShown get() = message != null || afterPin
@@ -53,7 +55,15 @@ class Phone(
     private val onChange: (PhoneState) -> Unit = {},
     /** Switches Wireless debugging off without a link (the app's own permission); a no-op where the app does not hold it. */
     private val switchOff: () -> Unit = {},
+    /** Runs a command inside the app when it can (settings, Do Not Disturb); null when only Wireless debugging can. */
+    private val local: (List<String>) -> String? = { null },
+    /** Paired once, so a link can be opened for one action without asking the user. */
+    private val paired: () -> Boolean = { false },
+    /** Switches Wireless debugging on without a link; false where the app does not hold the permission. */
+    private val switchOn: () -> Boolean = { false },
 ) {
+    /** Thrown inside an action that needs Wireless debugging before the one-time setup. */
+    private class NeedsSetup : Exception()
     @Volatile var state = PhoneState()
         private set
     @Volatile private var link: Link? = null
@@ -80,7 +90,7 @@ class Phone(
         run("Connecting and checking this phone…") {
             val l = open()
             link = l
-            update { copy(connected = true, afterPin = false) }
+            update { copy(connected = true, afterPin = false, needsSetup = false) }
             val r = l.check()
             update { copy(results = r) }
         }
@@ -122,16 +132,16 @@ class Phone(
         update { copy(removed = debloat.removed, scan = s) }
     }
 
-    fun turnOn(p: Profile) = withLink("Turning on ${p.label} mode…") { l -> modes.turnOn(l.shell, p); update { copy(activeMode = modes.active) } }
+    fun turnOn(p: Profile) = withShell("Turning on ${p.label} mode…") { sh -> modes.turnOn(sh, p); update { copy(activeMode = modes.active) } }
 
-    fun turnOff() = withLink("Turning off ${state.activeMode?.label} mode…") { l -> modes.turnOff(l.shell); update { copy(activeMode = modes.active) } }
+    fun turnOff() = withShell("Turning off ${state.activeMode?.label} mode…") { sh -> modes.turnOff(sh); update { copy(activeMode = modes.active) } }
 
     /** Pins [component] and switches Wireless debugging off: pinning hides MonoMode, so nothing else can follow. Also "Pin again" after an unpin. */
     fun pin(component: String, label: String) = withLink("Pinning $label and switching off Wireless debugging…") { l -> pinAndFinish(l, component, label) }
 
     /** Kiosk in one step: its settings, then [component] pinned, then Wireless debugging off. */
     fun turnOnKiosk(component: String, label: String) = withLink("Turning on Kiosk with $label…") { l ->
-        modes.turnOn(l.shell, Profile.KIOSK)
+        modes.turnOn(routed { l }, Profile.KIOSK)
         update { copy(activeMode = modes.active) }
         pinAndFinish(l, component, label)
     }
@@ -143,12 +153,12 @@ class Phone(
         update { copy(afterPin = true, wirelessOn = wirelessOn(), message = if (off) null else "$label is pinned. Wireless debugging may still be on: turn it off in Developer options.") }
     }
 
-    /** Switches Wireless debugging off and ends the session. */
-    fun finish() = withLink("Switching off Wireless debugging…") { l ->
+    /** Switches Wireless debugging off and ends the session; nothing to do without one. */
+    fun finish() { val l = link ?: return; run("Switching off Wireless debugging…") {
         val off = l.finish()
         drop()
         update { copy(wirelessOn = wirelessOn(), message = if (off) null else "Wireless debugging may still be on. Turn it off in Developer options.") }
-    }
+    } }
 
     /** Best effort when the app leaves the screen: never leave Wireless debugging on. A running change is not cut short. */
     fun finishQuietly() {
@@ -166,16 +176,44 @@ class Phone(
     }
 
     fun dismiss() = update { copy(message = null) }
+    fun cancelSetup() = update { copy(needsSetup = false) }
 
     private fun drop() { link = null; update { copy(connected = false, results = null, scan = null) } }
 
-    private fun withLink(label: String, work: (Link) -> Unit) { val l = link ?: return; run(label) { work(l) } }
+    /** Runs [work] over the open link, or over one opened for this action alone: Wireless debugging goes on, then off again. */
+    private fun withLink(label: String, work: (Link) -> Unit) = run(label) {
+        link?.let { return@run work(it) }
+        val l = momentLink()
+        try { work(l) } finally { endMoment(l) }
+    }
+
+    /** Settings and Do Not Disturb run inside the app; anything else opens a link for this action, as [withLink]. */
+    private fun withShell(label: String, work: (Shell) -> Unit) = run(label) {
+        var moment: Link? = null
+        try { work(routed { link ?: momentLink().also { moment = it } }) } finally { moment?.let(::endMoment) }
+    }
+
+    private fun routed(link: () -> Link) = Shell { args -> local(args) ?: link().shell.run(args) }
+
+    private fun momentLink(): Link {
+        if (!paired()) throw NeedsSetup()
+        if (!wirelessOn() && !switchOn()) throw IllegalStateException("Turn on Wireless debugging in Developer options, then try again.")
+        return open().also { l -> link = l; update { copy(connected = true, wirelessOn = true, afterPin = false, needsSetup = false) } }
+    }
+
+    // keeps what the action found (results, app list) on screen; a pin has already ended it
+    private fun endMoment(l: Link) {
+        if (link !== l) return
+        link = null
+        val off = runCatching { l.finish() }.getOrDefault(false)
+        update { copy(connected = false, wirelessOn = wirelessOn(), message = message ?: if (off) null else "Wireless debugging may still be on. Turn it off in Developer options.") }
+    }
 
     private fun run(label: String, work: () -> Unit) {
         if (state.busy != null) return
         update { copy(busy = label, message = null) }
         background {
-            try { work() } catch (e: IOException) {
+            try { work() } catch (e: NeedsSetup) { update { copy(needsSetup = true) } } catch (e: IOException) {
                 if (!lostConnection(e)) update { copy(message = explain(e)) }
                 else {
                     link?.let { runCatching { it.close() } }; drop()
