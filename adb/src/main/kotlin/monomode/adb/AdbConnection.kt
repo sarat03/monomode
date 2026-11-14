@@ -7,8 +7,12 @@ interface AdbTransport {
     fun startTls()
 }
 
+/** Thread-safe: several threads may run commands on one connection at once, each on its own stream. */
 class AdbConnection(private val transport: AdbTransport) {
-    private var lastLocalId = 0
+    private val lastLocalId = java.util.concurrent.atomic.AtomicInteger()
+    /** Messages read by one stream's thread for another open stream, keyed by our local id. */
+    private val inboxes = java.util.concurrent.ConcurrentHashMap<Int, java.util.concurrent.LinkedBlockingQueue<AdbMessage>>()
+    private val readLock = java.util.concurrent.locks.ReentrantLock()
 
     fun connect() {
         send(AdbMessage(Command.CNXN, A_VERSION, MAX_PAYLOAD, "host::".toByteArray()))
@@ -54,23 +58,46 @@ class AdbConnection(private val transport: AdbTransport) {
 
     // ponytail: buffers the whole stream before parsing; stream it when we run long or chatty commands.
     private fun readStream(service: String): ByteArray {
-        // ponytail: one stream at a time; multiplex when we need concurrent commands.
-        val id = ++lastLocalId
-        send(AdbMessage(Command.OPEN, id, 0, "$service\u0000".toByteArray()))
-        val out = java.io.ByteArrayOutputStream()
+        val id = lastLocalId.incrementAndGet()
+        val inbox = java.util.concurrent.LinkedBlockingQueue<AdbMessage>()
+        inboxes[id] = inbox // before OPEN, so no reply for it is dropped
+        try {
+            send(AdbMessage(Command.OPEN, id, 0, "$service\u0000".toByteArray()))
+            val out = java.io.ByteArrayOutputStream()
+            while (true) {
+                val m = next(id, inbox)
+                when (m.command) {
+                    Command.OKAY -> Unit
+                    Command.WRTE -> { out.write(m.payload); send(AdbMessage(Command.OKAY, id, m.arg0, ByteArray(0))) }
+                    Command.CLSE -> { send(AdbMessage(Command.CLSE, id, m.arg0, ByteArray(0))); return out.toByteArray() }
+                    else -> throw ProtocolException("unexpected ${m.command} on shell stream")
+                }
+            }
+        } finally {
+            inboxes.remove(id)
+        }
+    }
+
+    /** No reader thread: whichever stream holds the read lock reads one message and hands others' to their inbox. */
+    private fun next(id: Int, inbox: java.util.concurrent.BlockingQueue<AdbMessage>): AdbMessage {
         while (true) {
-            val m = receive()
-            if (m.arg1 != id) continue // late messages for an earlier stream, e.g. adbd's second CLSE
-            when (m.command) {
-                Command.OKAY -> Unit
-                Command.WRTE -> { out.write(m.payload); send(AdbMessage(Command.OKAY, id, m.arg0, ByteArray(0))) }
-                Command.CLSE -> { send(AdbMessage(Command.CLSE, id, m.arg0, ByteArray(0))); return out.toByteArray() }
-                else -> throw ProtocolException("unexpected ${m.command} on shell stream")
+            inbox.poll()?.let { return it }
+            if (readLock.tryLock()) {
+                try {
+                    inbox.poll()?.let { return it }
+                    val m = receive()
+                    if (m.arg1 == id) return m
+                    inboxes[m.arg1]?.add(m) // no inbox: late message for a closed stream, e.g. adbd's second CLSE
+                } finally {
+                    readLock.unlock()
+                }
+            } else {
+                inbox.poll(10, java.util.concurrent.TimeUnit.MILLISECONDS)?.let { return it }
             }
         }
     }
 
-    private fun send(m: AdbMessage) = transport.write(m.encode())
+    @Synchronized private fun send(m: AdbMessage) = transport.write(m.encode())
 
     private fun receive(): AdbMessage {
         val header = transport.readFully(AdbMessage.HEADER)

@@ -10,10 +10,37 @@ import android.os.Bundle
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import androidx.activity.ComponentActivity
+import androidx.compose.material3.Surface
+import monomode.engine.label
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material.icons.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Warning
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.Icons
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.lazy.rememberLazyListState
+import android.widget.Toast
+import android.provider.Settings
+import android.os.UserHandle
+import android.net.Uri
+import android.content.pm.LauncherApps
+import androidx.activity.compose.BackHandler
 import androidx.activity.addCallback
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -23,7 +50,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,8 +59,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -59,69 +85,123 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import monomode.engine.OWN_HOME
 import monomode.engine.Profile
 import java.text.DateFormat
 import java.util.Date
 
-/** The home screen while a mode with "Own home screen" is on, styled for that mode. */
+/** The home screen: the everyday launcher, or the e-reader's own home while that mode is on (Kiosk pins one app instead). */
 class HomeActivity : ComponentActivity() {
 
     private var apps by mutableStateOf<List<App>>(emptyList())
     private var mode by mutableStateOf<Profile?>(null)
     private var reader by mutableStateOf<App?>(null)
-    /** Drawn once per app; the screen reloads on every return from an app. shortcut: an updated app keeps its old icon until the home screen restarts. */
-    private val icons = HashMap<String, ImageBitmap>()
+    /** Every app, name only, for the plain launcher shown when no mode is on. */
+    private var everyApp by mutableStateOf<List<Pair<String, String>>>(emptyList())
+    private var pinned by mutableStateOf<Set<String>>(emptySet())
+    /** All apps list open; a Home press goes back to the pinned apps, like any launcher. */
+    private var showAll by mutableStateOf(false)
+    /** Counts Home presses on home, so the list scrolls back to the top and search clears. */
+    private var homeTaps by mutableStateOf(0)
+    /** Read on every return to home, so the warning goes as soon as MonoMode turns it off. */
+    private var wirelessOn by mutableStateOf(false)
+    private val pins by lazy { getSharedPreferences("launcher", MODE_PRIVATE) }
     private var now by mutableStateOf(Date())
     private var batteryLevel by mutableStateOf(-1)
-    /** Set by a Home press; a single kiosk app opens then, but not when the user comes Back from it. */
-    private var homePressed = true
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Appearance.load(this)
+        // draw under the status and navigation bars and the camera cutout, so the screen colour runs to the edges; the content keeps clear with safeDrawingPadding
+        enableEdgeToEdge()
         // a home screen ignores Back; finishing would reveal the phone's usual launcher underneath
         onBackPressedDispatcher.addCallback(this) {}
         setContent {
-            LaunchedEffect(Unit) { while (true) { now = Date(); batteryLevel = battery(); delay(30_000) } }
-            if (mode == Profile.E_READER) Reader() else KioskHome(apps, now, batteryLevel, { open(it) }, ::openMonoMode)
+            // wake at each new minute, so the clock never lags the status bar's
+            LaunchedEffect(Unit) { while (true) { now = Date(); batteryLevel = battery(); delay(60_000 - System.currentTimeMillis() % 60_000) } }
+            when (mode) {
+                null -> AllApps(
+                    everyApp, pinned, showAll, homeTaps, now, { open(it) }, ::togglePin, { showAll = it }, { openMonoMode() },
+                    wirelessOn = wirelessOn,
+                    onAppInfo = { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", it, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
+                    onUninstall = { startActivity(Intent(Intent.ACTION_DELETE, Uri.fromParts("package", it, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
+                )
+                else -> Reader() // the e-reader is the only mode with a home screen of its own
+            }
         }
         // full screen, after setContent (the window has no decor before it on Android 11): the home screens draw their own clock; a swipe from the top shows the bars briefly
-        window.insetsController?.apply {
-            hide(WindowInsets.Type.statusBars())
-            systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        window.insetsController?.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        getSystemService(LauncherApps::class.java).registerCallback(packages)
+    }
+
+    override fun onDestroy() {
+        getSystemService(LauncherApps::class.java).unregisterCallback(packages)
+        super.onDestroy()
+    }
+
+    /** Apps installed, removed or updated while home is on screen show up at once, not only on the next return. */
+    private val packages = object : LauncherApps.Callback() {
+        override fun onPackageRemoved(pkg: String, user: UserHandle) {
+            if (pkg in pinned) togglePin(pkg) // uninstalled: drop its pin, so a reinstall starts unpinned like any launcher
+            reload()
         }
+        override fun onPackageAdded(pkg: String, user: UserHandle) = reload()
+        override fun onPackageChanged(pkg: String, user: UserHandle) = reload()
+        override fun onPackagesAvailable(pkgs: Array<out String>, user: UserHandle, replacing: Boolean) = reload()
+        override fun onPackagesUnavailable(pkgs: Array<out String>, user: UserHandle, replacing: Boolean) = reload()
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        homePressed = true
+        // Home on home: back to the top of the pinned apps with search cleared, as launchers do
+        showAll = false
+        homeTaps++
+    }
+
+    private fun togglePin(pkg: String) {
+        pinned = if (pkg in pinned) pinned - pkg else pinned + pkg
+        pins.edit().putStringSet("pinned", pinned).apply()
     }
 
     override fun onResume() {
         super.onResume()
+        reload()
+    }
+
+    private fun reload() {
         val modes = Records.modes(this)
-        mode = modes.active
+        // only a mode with "Own home screen" switched on takes over home (Kiosk has none), even when MonoMode is the everyday launcher
+        mode = modes.active?.takeIf { OWN_HOME in it.options && OWN_HOME !in modes.off(it) }
+        // a mode's home screen is full screen and draws its own clock; the everyday launcher keeps the status bar and its notifications
+        window.insetsController?.run { if (mode == null) show(WindowInsets.Type.statusBars()) else hide(WindowInsets.Type.statusBars()) }
         batteryLevel = battery()
+        wirelessOn = Session.isWirelessDebuggingOn(this)
         val picked = mode?.let { modes.apps(it) }.orEmpty()
-        val pm = packageManager
         val all = launcherApps(this)
-        fun app(p: Pair<String, String>) = App(p.first, p.second, icons.getOrPut(p.first) { pm.getApplicationIcon(p.first).toBitmap((72 * resources.displayMetrics.density).toInt()) })
+        fun app(p: Pair<String, String>) = App(p.first, p.second)
         val readerPkg = modes.reader(all.map { it.first })
         reader = all.firstOrNull { it.first == readerPkg }?.let(::app)
-        apps = all.filter { it.first in picked && (mode != Profile.E_READER || it.first != readerPkg) }.map(::app)
-        if (mode == Profile.KIOSK && apps.size == 1 && homePressed) open(apps[0].pkg)
-        homePressed = false
+        // the everyday launcher lists MonoMode like any app; the kiosk picker and cleaner, which share launcherApps, must not
+        everyApp = if (mode == null) (all + (packageName to getString(R.string.app_name))).sortedBy { it.second.lowercase() } else emptyList()
+        pinned = pins.getStringSet("pinned", emptySet())!!.toSet()
+        apps = if (mode == null) emptyList() else all.filter { it.first in picked && it.first != readerPkg }.map(::app)
     }
 
     // each app in its own task, like any launcher: Home clears this screen's task, and anything started
     // inside it would be closed too (MonoMode's screen closing ends the session and turns off Wireless debugging)
-    private fun open(pkg: String) = packageManager.getLaunchIntentForPackage(pkg)?.let { startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    // an app can be disabled or removed between drawing the list and the tap; say so instead of crashing home
+    private fun open(pkg: String) {
+        val launch = packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (launch == null || runCatching { startActivity(launch) }.isFailure) {
+            Toast.makeText(this, getString(R.string.could_not_open_app), Toast.LENGTH_SHORT).show()
+            reload()
+        }
+    }
     // lands on the Modes page, where the mode is turned off; CLEAR_TOP|SINGLE_TOP reaches a running copy through onNewIntent
     private fun openMonoMode() = startActivity(
         Intent(this, MainActivity::class.java).putExtra(Page.EXTRA, Page.MODES)
@@ -172,47 +252,124 @@ class HomeActivity : ComponentActivity() {
 }
 
 
-internal class App(val pkg: String, val label: String, val icon: ImageBitmap)
-
-/** A grid of the chosen apps. The way back to MonoMode is a long press on the clock, so a guest does not stumble out. */
+/**
+ * The everyday launcher when no mode is on (#23): a clock, your pinned apps, and All apps. Nothing else.
+ * MonoMode is one app among them; its modes, tools and settings live inside it, not here.
+ * Apps are names only, no icons or badges, so nothing on it pulls for attention.
+ */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun KioskHome(apps: List<App>, now: Date, battery: Int, onOpen: (String) -> Unit, onMonoMode: () -> Unit) = AppTheme {
-    // fewer apps, bigger icons, within normal launcher sizes: app icons are drawn for about 48dp and blur when stretched far past it
-    val icon = (96f / kotlin.math.sqrt(apps.size.coerceAtLeast(1).toFloat())).coerceIn(48f, 72f).dp
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).safeDrawingPadding().padding(16.dp)) {
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(
-                DateFormat.getTimeInstance(DateFormat.SHORT).format(now),
-                Modifier.combinedClickable(onLongClickLabel = stringResource(R.string.open_monomode), onClick = {}, onLongClick = onMonoMode).padding(8.dp),
-                color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.displayLarge,
-            )
-            Spacer(Modifier.weight(1f))
-            Text("$battery%", Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium)
+internal fun AllApps(
+    apps: List<Pair<String, String>>, pinned: Set<String>, showAll: Boolean, homeTaps: Int, now: Date,
+    onOpen: (String) -> Unit, onTogglePin: (String) -> Unit, onShowAll: (Boolean) -> Unit, onMonoMode: () -> Unit,
+    onAppInfo: (String) -> Unit = {}, onUninstall: (String) -> Unit = {},
+    wirelessOn: Boolean = false,
+) = AppTheme {
+    val faint = MaterialTheme.colorScheme.onSurfaceVariant
+    var query by rememberSaveable { mutableStateOf("") }
+    var menuFor by remember { mutableStateOf<String?>(null) }
+    val list = rememberLazyListState()
+    LaunchedEffect(homeTaps, showAll) { query = ""; menuFor = null; list.scrollToItem(0) }
+    BackHandler(showAll) { onShowAll(false) }
+    val shown = if (showAll) apps.filter { it.second.contains(query.trim(), ignoreCase = true) } else apps.filter { it.first in pinned }
+
+    @Composable
+    fun AppRow(pkg: String, label: String) = Box {
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                .combinedClickable(onLongClickLabel = stringResource(R.string.app_options), onClick = { onOpen(pkg) }, onLongClick = { menuFor = pkg })
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // home: big names, the way minimal launchers do; All apps stays compact for scanning a long list
+            Text(label, Modifier.weight(1f), style = if (showAll) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (showAll && pkg in pinned) Text(stringResource(R.string.pinned), color = faint, style = MaterialTheme.typography.labelMedium)
         }
-        Text(DateFormat.getDateInstance(DateFormat.FULL).format(now), Modifier.padding(horizontal = 8.dp), color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleMedium)
-        if (apps.isEmpty()) Text(stringResource(R.string.no_apps_chosen_open_monomode), Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurface)
-        LazyVerticalGrid(GridCells.Adaptive(icon + 32.dp), Modifier.weight(1f).padding(top = 32.dp), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-            items(apps, key = { it.pkg }) { a ->
-                Column(Modifier.clickable { onOpen(a.pkg) }.padding(4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    // plain tile behind the app's own icon (design A): calm, and hides the white squares of older icons
-                    Box(Modifier.size(icon + 16.dp).clip(RoundedCornerShape(24)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-                        Image(a.icon, null, Modifier.size(icon).clip(RoundedCornerShape(22)))
-                    }
-                    Text(a.label, Modifier.padding(top = 6.dp), color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyMedium)
+        DropdownMenu(menuFor == pkg, { menuFor = null }) {
+            DropdownMenuItem({ Text(stringResource(if (pkg in pinned) R.string.unpin else R.string.pin)) }, { menuFor = null; onTogglePin(pkg) })
+            DropdownMenuItem({ Text(stringResource(R.string.app_info)) }, { menuFor = null; onAppInfo(pkg) })
+            DropdownMenuItem({ Text(stringResource(R.string.uninstall)) }, { menuFor = null; onUninstall(pkg) })
+        }
+    }
+
+    // Surface, not a bare background: it also sets the text colour, which the clock and app names take; without it they drew black in dark theme
+    Surface(Modifier.fillMaxSize()) { LazyColumn(
+        Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp), list,
+    ) {
+        if (showAll) {
+            // MonoMode's page header: back arrow and title
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton({ onShowAll(false) }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back)) }
+                    Text(stringResource(R.string.all_apps), Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineSmall)
                 }
             }
+            item {
+                OutlinedTextField(
+                    query, { query = it }, Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    placeholder = { Text(stringResource(R.string.search_apps)) }, singleLine = true,
+                    leadingIcon = { Icon(Icons.Outlined.Search, null) },
+                    // Enter opens the top match, so typing a few letters and Go is enough
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
+                    keyboardActions = KeyboardActions(onGo = { shown.firstOrNull()?.let { onOpen(it.first) } }),
+                )
+            }
+            items(shown, key = { it.first }) { (pkg, label) -> AppRow(pkg, label) }
+            if (shown.isEmpty()) item { Text(stringResource(R.string.no_apps_match), Modifier.padding(16.dp), color = faint) }
+            return@LazyColumn
         }
-        // visible but needs a hold, so a guest does not leave kiosk by accident
-        Text(
-            stringResource(R.string.hold_for_monomode),
-            Modifier.align(Alignment.CenterHorizontally).combinedClickable(onLongClickLabel = stringResource(R.string.open_monomode), onClick = {}, onLongClick = onMonoMode).padding(12.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelMedium,
-        )
-    }
+        item {
+            Column(Modifier.padding(start = 8.dp, end = 8.dp, top = 32.dp, bottom = 24.dp)) {
+                Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(now), style = MaterialTheme.typography.displayLarge)
+                Text(DateFormat.getDateInstance(DateFormat.FULL).format(now), color = faint, style = MaterialTheme.typography.titleMedium)
+            }
+        }
+        // the one exception to "MonoMode stays inside MonoMode": while Wireless debugging is on, a paired computer can control this phone
+        if (wirelessOn) item {
+            val w = warnTone().fg
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClickLabel = stringResource(R.string.open_monomode), onClick = onMonoMode).padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(Icons.Outlined.Warning, null, Modifier.size(18.dp), tint = w)
+                Text(stringResource(R.string.wireless_debugging_is_on), color = w, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        // names only, no cards behind them: the pinned apps are the quietest thing on the screen
+        if (shown.isEmpty()) item { Text(stringResource(R.string.no_pinned_apps), Modifier.padding(8.dp), color = faint, style = MaterialTheme.typography.bodyMedium) }
+        items(shown, key = { it.first }) { (pkg, label) -> AppRow(pkg, label) }
+        item {
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { onShowAll(true) }.padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(R.string.all_apps), Modifier.weight(1f), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
+                Text("${apps.size}", color = faint, style = MaterialTheme.typography.bodyMedium)
+                Icon(Icons.Outlined.KeyboardArrowRight, null, tint = faint)
+            }
+        }
+        // the way into MonoMode, worded as what it is for; MonoMode itself is also in All apps
+        item {
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClickLabel = stringResource(R.string.open_monomode), onClick = onMonoMode).padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(R.string.modes), Modifier.weight(1f), color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium)
+                Icon(Icons.Outlined.KeyboardArrowRight, null, tint = faint)
+            }
+        }
+    } }
 }
+
+/** A small heading over a group of cards, as on every MonoMode page. */
+@Composable
+internal fun Section(text: String, modifier: Modifier = Modifier) = Text(text, modifier.padding(start = 8.dp, top = 8.dp).semantics { heading() },
+    style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+
+internal val Profile.whatRes get() = when (this) { Profile.KIOSK -> R.string.only_the_apps_you_choose; Profile.E_READER -> R.string.a_calm_grey_screen_for }
+internal val Profile.icon get() = when (this) { Profile.KIOSK -> AppIcons.Grid; Profile.E_READER -> AppIcons.Book }
+
+internal class App(val pkg: String, val label: String)
 
 /** Settings > Appearance; "system" follows the phone's light or dark setting. */
 object Appearance {

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Needed even for loopback sockets; the app only ever connects to this phone's own adbd (ADR 0002). -->
     <uses-permission android:name="android.permission.INTERNET" />
@@ -11,6 +12,13 @@
     <!-- App names in Clean up and the kiosk picker. A debloater must see every app, so this is the
          one broad permission; nothing leaves the phone (ADR 0002). -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
+    <!-- Uninstall from the launcher's app menu; Android still asks the user to confirm. -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+
+    <!-- Lets MonoMode switch Wireless debugging on when it opens and off when it leaves. Not grantable from the
+         Play Store or a dialog: MonoMode grants it to itself once, over its own Wireless debugging connection. -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
 
     <application
         android:allowBackup="false"
@@ -26,7 +34,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <!-- home screen only while a mode sets it with set-home-activity; launchMode keeps one copy; own affinity so
+        <!-- home screen while a mode sets it with set-home-activity, or always if the user picks it as their launcher; launchMode keeps one copy; own affinity so
              MonoMode opened from it gets its own task, which Home does not clear (that ended the session) -->
         <activity
             android:name=".HomeActivity"

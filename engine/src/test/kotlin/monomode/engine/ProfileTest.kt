@@ -62,6 +62,13 @@ class ProfileTest {
         assertEquals(start, sh.values)
     }
 
+    @Test fun `kiosk always allows pinning and never takes over home`() {
+        val sh = FakeSettings(start); val r = rec()
+        applyProfile(sh, Profile.KIOSK, r, off = Profile.KIOSK.options.keys)
+        assertEquals("1", sh.values["secure lock_to_app_enabled"])
+        assertEquals("com.oppo.launcher/.Launcher", sh.values["home activity"])
+    }
+
     @Test fun `own home screen replaces the launcher until restore`() {
         val sh = FakeSettings(start); val r = rec()
         applyProfile(sh, Profile.E_READER, r)

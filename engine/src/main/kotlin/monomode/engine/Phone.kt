@@ -51,6 +51,8 @@ class Phone(
     private val saveCopy: (File) -> Unit = {},
     private val background: (() -> Unit) -> Unit = { work -> thread { work() } },
     private val onChange: (PhoneState) -> Unit = {},
+    /** Switches Wireless debugging off without a link (the app's own permission); a no-op where the app does not hold it. */
+    private val switchOff: () -> Unit = {},
 ) {
     @Volatile var state = PhoneState()
         private set
@@ -124,8 +126,17 @@ class Phone(
 
     fun turnOff() = withLink("Turning off ${state.activeMode?.label} mode…") { l -> modes.turnOff(l.shell); update { copy(activeMode = modes.active) } }
 
-    /** Pins [component] and switches Wireless debugging off: pinning hides MonoMode, so nothing else can follow. */
-    fun pin(component: String, label: String) = withLink("Pinning $label and switching off Wireless debugging…") { l ->
+    /** Pins [component] and switches Wireless debugging off: pinning hides MonoMode, so nothing else can follow. Also "Pin again" after an unpin. */
+    fun pin(component: String, label: String) = withLink("Pinning $label and switching off Wireless debugging…") { l -> pinAndFinish(l, component, label) }
+
+    /** Kiosk in one step: its settings, then [component] pinned, then Wireless debugging off. */
+    fun turnOnKiosk(component: String, label: String) = withLink("Turning on Kiosk with $label…") { l ->
+        modes.turnOn(l.shell, Profile.KIOSK)
+        update { copy(activeMode = modes.active) }
+        pinAndFinish(l, component, label)
+    }
+
+    private fun pinAndFinish(l: Link, component: String, label: String) {
         pin(l.shell, component)
         val off = l.finish()
         drop()
@@ -142,11 +153,17 @@ class Phone(
     /** Best effort when the app leaves the screen: never leave Wireless debugging on. A running change is not cut short. */
     fun finishQuietly() {
         if (state.busy != null) { finishWhenIdle = true; return }
-        link?.let { l -> drop(); background { runCatching { l.finish() } } }
+        link?.let { l -> drop(); background { runCatching { l.finish() } } } ?: runCatching { switchOff() }
     }
 
-    /** Forgets the session, e.g. after the pairing was forgotten. */
-    fun disconnect() { link?.let { l -> background { runCatching { l.close() } } }; drop() }
+    /**
+     * Ends the session after the pairing was forgotten: runs [last] over the link (best effort), then switches
+     * Wireless debugging off over it, as [last] may take away the app's own way to do that.
+     */
+    fun disconnect(last: List<String>? = null) {
+        link?.let { l -> background { last?.let { runCatching { l.shell.run(it) } }; runCatching { l.finish() } } }
+        drop()
+    }
 
     fun dismiss() = update { copy(message = null) }
 
@@ -166,7 +183,8 @@ class Phone(
                 }
             } catch (e: Exception) { update { copy(message = explain(e)) } } finally {
                 update { copy(busy = null) }
-                if (finishWhenIdle) { finishWhenIdle = false; link?.let { l -> drop(); runCatching { l.finish() } } }
+                // left mid-change: finish over the link, or, when connecting failed, switch it off directly
+                if (finishWhenIdle) { finishWhenIdle = false; link?.let { l -> drop(); runCatching { l.finish() } } ?: runCatching { switchOff() } }
             }
         }
     }

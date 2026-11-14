@@ -36,6 +36,11 @@ object Pairing {
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("pairing", Context.MODE_PRIVATE)
 
+    /** Tapping either notification opens MonoMode: pairing happens inside Android's Settings, far from it. */
+    private fun openApp(ctx: Context) = PendingIntent.getActivity(
+        ctx, 1, Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE,
+    )
+
     /** Shows the notification with a code field. [text] explains the next step. */
     fun prompt(ctx: Context, text: String = ctx.getString(R.string.pairing_prompt)) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
@@ -52,14 +57,15 @@ object Pairing {
             .setContentText(text)
             .setStyle(Notification.BigTextStyle().bigText(text))
             .addAction(action)
+            .setContentIntent(openApp(ctx))
             .setOngoing(true)
             .build())
     }
 
-    private fun done(ctx: Context, text: String) {
+    internal fun done(ctx: Context, text: String) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
         nm.notify(ID, Notification.Builder(ctx, CHANNEL).setSmallIcon(android.R.drawable.ic_lock_lock)
-            .setContentTitle(ctx.getString(R.string.monomode_is_paired)).setContentText(text).setAutoCancel(true).build())
+            .setContentTitle(ctx.getString(R.string.monomode_is_paired)).setContentText(text).setContentIntent(openApp(ctx)).setAutoCancel(true).build())
     }
 
     /** Pairs with this phone's own adbd. Throws with a message fit for the notification. */

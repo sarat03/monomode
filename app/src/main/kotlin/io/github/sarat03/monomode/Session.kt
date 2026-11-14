@@ -1,6 +1,7 @@
 package io.github.sarat03.monomode
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.provider.Settings
 import io.github.sarat03.monomode.tls.AdbKey
 import io.github.sarat03.monomode.tls.TlsAdbTransport
@@ -41,6 +42,18 @@ class Session private constructor(private val ctx: Context, private val transpor
     companion object {
         fun isWirelessDebuggingOn(ctx: Context) = Settings.Global.getInt(ctx.contentResolver, "adb_wifi_enabled", 0) == 1
 
+        /** Lets MonoMode switch Wireless debugging itself; granted once over its own connection (see [open]), revoked on Forget pairing. */
+        const val SWITCH = "android.permission.WRITE_SECURE_SETTINGS"
+        fun canSwitch(ctx: Context) = ctx.checkSelfPermission(SWITCH) == PackageManager.PERMISSION_GRANTED
+        /** The same setting the Developer options switch writes; Android then starts or stops adbd's listener. */
+        /**
+         * First connection: grant ourselves the switch, so later opens need no trip to Developer options.
+         * Best effort: realme/Xiaomi may refuse it until their extra developer switch is on; the manual way still works.
+         */
+        fun grantSwitch(ctx: Context, shell: Shell) { if (!canSwitch(ctx)) runCatching { shell.run(listOf("pm", "grant", ctx.packageName, SWITCH)) } }
+        fun revokeSwitch(ctx: Context) = listOf("pm", "revoke", ctx.packageName, SWITCH)
+        fun switch(ctx: Context, on: Boolean) = runCatching { Settings.Global.putInt(ctx.contentResolver, "adb_wifi_enabled", if (on) 1 else 0) }.isSuccess
+
         /** Finds the connect port by mDNS and connects with our paired key. */
         fun open(ctx: Context): Session {
             val ports = Mdns.ports(ctx, Mdns.CONNECT)
@@ -50,7 +63,9 @@ class Session private constructor(private val ctx: Context, private val transpor
                 var t: TlsAdbTransport? = null
                 try {
                     t = TlsAdbTransport(InetAddress.getLoopbackAddress(), port, AdbKey.getOrCreate())
-                    return Session(ctx.applicationContext, t, AdbConnection(t).apply { connect() }, port)
+                    val s = Session(ctx.applicationContext, t, AdbConnection(t).apply { connect() }, port)
+                    grantSwitch(ctx, s.shell)
+                    return s
                 } catch (e: Exception) {
                     t?.close(); last = e
                 }
