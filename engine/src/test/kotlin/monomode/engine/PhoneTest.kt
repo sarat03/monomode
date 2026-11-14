@@ -161,12 +161,24 @@ class PhoneTest {
     @Test fun `a mode whose settings the app can write itself turns on and off with no link at all`() {
         var opened = 0
         val p = Phone(open = { opened++; link }, debloat = Debloat(File(dir, "l.txt")), modes = Modes(dir, ModesTest.MapStore()),
-            wirelessOn = { false }, background = { it() }, local = { a -> settings.run(a) })
+            wirelessOn = { false }, background = { it() }, local = ShellSettings(settings))
         p.turnOn(Profile.E_READER)
         assertEquals(Profile.E_READER, p.state.activeMode)
         assertEquals("1", settings.values["global zen_mode"])
         p.turnOff()
         assertNull(p.state.activeMode)
+        assertEquals(0, opened)
+    }
+
+    @Test fun `turning Kiosk off with nothing pinned puts its settings back without Wireless debugging`() {
+        var opened = 0
+        val modes = Modes(dir, ModesTest.MapStore())
+        modes.turnOn(ShellSettings(sh), Profile.KIOSK) // on from an earlier session, since unpinned by the user
+        val p = Phone(open = { opened++; link }, debloat = Debloat(File(dir, "k.txt")), modes = modes,
+            wirelessOn = { false }, background = { it() }, local = ShellSettings(settings), pinned = { false })
+        p.turnOff()
+        assertNull(p.state.activeMode)
+        assertEquals("0", settings.values["global stay_on_while_plugged_in"])
         assertEquals(0, opened)
     }
 

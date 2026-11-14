@@ -55,8 +55,10 @@ class Phone(
     private val onChange: (PhoneState) -> Unit = {},
     /** Switches Wireless debugging off without a link (the app's own permission); a no-op where the app does not hold it. */
     private val switchOff: () -> Unit = {},
-    /** Runs a command inside the app when it can (settings, Do Not Disturb); null when only Wireless debugging can. */
-    private val local: (List<String>) -> String? = { null },
+    /** The app's own settings adapter, used where it can; the rest goes over Wireless debugging. */
+    private val local: PhoneSettings? = null,
+    /** An app is pinned now, so turning Kiosk off must unpin it over Wireless debugging first. */
+    private val pinned: () -> Boolean = { true },
     /** Paired once, so a link can be opened for one action without asking the user. */
     private val paired: () -> Boolean = { false },
     /** Switches Wireless debugging on without a link; false where the app does not hold the permission. */
@@ -132,16 +134,19 @@ class Phone(
         update { copy(removed = debloat.removed, scan = s) }
     }
 
-    fun turnOn(p: Profile) = withShell("Turning on ${p.label} mode…") { sh -> modes.turnOn(sh, p); update { copy(activeMode = modes.active) } }
+    fun turnOn(p: Profile) = withSettings("Turning on ${p.label} mode…") { s, _ -> modes.turnOn(s, p); update { copy(activeMode = modes.active) } }
 
-    fun turnOff() = withShell("Turning off ${state.activeMode?.label} mode…") { sh -> modes.turnOff(sh); update { copy(activeMode = modes.active) } }
+    fun turnOff() = withSettings("Turning off ${state.activeMode?.label} mode…") { s, shell ->
+        modes.turnOff(s) { if (pinned()) unpin(shell()) }
+        update { copy(activeMode = modes.active) }
+    }
 
     /** Pins [component] and switches Wireless debugging off: pinning hides MonoMode, so nothing else can follow. Also "Pin again" after an unpin. */
     fun pin(component: String, label: String) = withLink("Pinning $label and switching off Wireless debugging…") { l -> pinAndFinish(l, component, label) }
 
     /** Kiosk in one step: its settings, then [component] pinned, then Wireless debugging off. */
     fun turnOnKiosk(component: String, label: String) = withLink("Turning on Kiosk with $label…") { l ->
-        modes.turnOn(routed { l }, Profile.KIOSK)
+        modes.turnOn(settings { l.shell }, Profile.KIOSK)
         update { copy(activeMode = modes.active) }
         pinAndFinish(l, component, label)
     }
@@ -189,13 +194,17 @@ class Phone(
         try { work(l) } finally { endMoment(l) }
     }
 
-    /** Settings and Do Not Disturb run inside the app; anything else opens a link for this action, as [withLink]. */
-    private fun withShell(label: String, work: (Shell) -> Unit) = run(label) {
+    /**
+     * Gives [work] the settings (the app's where it can) and a shell; either opens a link for this action
+     * only when first used, as [withLink] does, and it is switched off again after.
+     */
+    private fun withSettings(label: String, work: (PhoneSettings, shell: () -> Shell) -> Unit) = run(label) {
         var moment: Link? = null
-        try { work(routed { link ?: momentLink().also { moment = it } }) } finally { moment?.let(::endMoment) }
+        val shell = { (link ?: momentLink().also { moment = it }).shell }
+        try { work(settings(shell), shell) } finally { moment?.let(::endMoment) }
     }
 
-    private fun routed(link: () -> Link) = Shell { args -> local(args) ?: link().shell.run(args) }
+    private fun settings(shell: () -> Shell): PhoneSettings = local?.orElse { ShellSettings(shell()) } ?: ShellSettings(shell())
 
     private fun momentLink(): Link {
         if (!paired()) throw NeedsSetup()

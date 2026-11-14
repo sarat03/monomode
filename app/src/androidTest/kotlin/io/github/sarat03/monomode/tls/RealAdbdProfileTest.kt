@@ -15,6 +15,7 @@ import monomode.engine.Profile
 import monomode.engine.Shell
 import monomode.engine.applyProfile
 import monomode.engine.restoreProfile
+import monomode.engine.ShellSettings
 
 /** Release gate for profiles on a real device. Skipped unless -e connectPort is passed. */
 @RunWith(AndroidJUnit4::class)
@@ -36,9 +37,9 @@ class RealAdbdProfileTest {
         TlsAdbTransport(InetAddress.getLoopbackAddress(), port!!, AdbKey.getOrCreate()).use {
             val sh = AdbConnection(it).apply { connect() }.asShell()
             val before = snapshot(sh, profile)
-            applyProfile(sh, profile, record)
+            applyProfile(ShellSettings(sh), profile, record)
             assertNotEquals(before, snapshot(sh, profile))
-            restoreProfile(sh, record)
+            restoreProfile(ShellSettings(sh), record)
             assertEquals(before, snapshot(sh, profile))
         }
     }

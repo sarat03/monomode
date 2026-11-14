@@ -44,15 +44,15 @@ class Modes(private val dir: File, private val store: Store) {
         store.string("reader")?.takeIf { it in installed } ?: BUILT_IN_READER
     fun setReader(pkg: String) = store.putString("reader", pkg)
 
-    fun turnOn(sh: Shell, p: Profile) {
+    fun turnOn(s: PhoneSettings, p: Profile) {
         check(active == null) { "turn off ${active!!.name.lowercase()} mode first" }
-        applyProfile(sh, p, record(p), off(p))
+        applyProfile(s, p, record(p), off(p))
     }
 
-    /** Puts back every setting of the mode that is on. Kiosk unpins first, or the pinned app would hide the restored home screen. */
-    fun turnOff(sh: Shell) {
+    /** Puts back every setting of the mode that is on. Kiosk runs [unpin] first, or the pinned app would hide the restored home screen. */
+    fun turnOff(s: PhoneSettings, unpin: () -> Unit) {
         val p = active ?: return
-        if (p == Profile.KIOSK) unpin(sh)
-        restoreProfile(sh, record(p))
+        if (p == Profile.KIOSK) unpin()
+        restoreProfile(s, record(p))
     }
 }

@@ -40,14 +40,14 @@ class ModesTest {
     }
 
     @Test fun `the mode that is on counts as installed and cannot be uninstalled`() {
-        modes.turnOn(sh, Profile.KIOSK) // on from before this update, never installed
+        modes.turnOn(ShellSettings(sh), Profile.KIOSK) // on from before this update, never installed
         assertEquals(setOf(Profile.KIOSK), modes.installed)
         assertFailsWith<IllegalStateException> { modes.uninstall(Profile.KIOSK) }
     }
 
     @Test fun `turning on skips the options switched off and marks the mode active`() {
         modes.setOff(Profile.E_READER, setOf("Battery saver"))
-        modes.turnOn(sh, Profile.E_READER)
+        modes.turnOn(ShellSettings(sh), Profile.E_READER)
         assertEquals(Profile.E_READER, modes.active)
         assertEquals("0", settings.values["global low_power"])
         assertEquals("1", settings.values["secure accessibility_display_daltonizer_enabled"])
@@ -55,22 +55,22 @@ class ModesTest {
 
     @Test fun `active survives a new Modes over the same folder, like an app restart`() {
         val dir = Files.createTempDirectory("pw").toFile()
-        Modes(dir, store).turnOn(sh, Profile.KIOSK)
+        Modes(dir, store).turnOn(ShellSettings(sh), Profile.KIOSK)
         assertEquals(Profile.KIOSK, Modes(dir, store).active)
     }
 
     @Test fun `kiosk unpins before putting settings back`() {
-        modes.turnOn(sh, Profile.KIOSK)
+        modes.turnOn(ShellSettings(sh), Profile.KIOSK)
         val before = settings.calls.size
-        modes.turnOff(sh)
+        modes.turnOff(ShellSettings(sh)) { unpin(sh) }
         assertNull(modes.active)
         assertEquals(start, settings.values)
         assertEquals(listOf("am", "task", "lock", "stop"), settings.calls[before]) // a pinned app would block the restored launcher
     }
 
     @Test fun `a second mode cannot go on over the first`() {
-        modes.turnOn(sh, Profile.KIOSK)
-        assertFailsWith<IllegalStateException> { modes.turnOn(sh, Profile.E_READER) }
+        modes.turnOn(ShellSettings(sh), Profile.KIOSK)
+        assertFailsWith<IllegalStateException> { modes.turnOn(ShellSettings(sh), Profile.E_READER) }
     }
 
     @Test fun `reader is the chosen app while it is installed, else MonoMode's own reader`() {

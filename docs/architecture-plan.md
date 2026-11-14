@@ -15,22 +15,17 @@ were decided in `ModePage`'s `if`s. They now live in `engine/Needs.kt` behind tw
 `Profile.need(option, allowed)` and `Profile.firstAsk(off, allowed)`, tested in `NeedsTest`. The screen
 only draws the answer.
 
-## 2. A settings port instead of shell text (next)
+## 2. A settings port instead of shell text (done)
 
-`Profile` turns each `Change` into shell text (`settings put secure …`, `cmd notification set_dnd …`),
-and `Local.kt` parses that text back to run it in the app. Two adapters already exist (adb shell, in-app)
-plus the test fake, so the seam is real, but it sits at the wrong level.
+`Profile` used to turn each `Change` into shell text and `Local.kt` parsed it back to run it in the app.
+Now `engine/Profile.kt` has the port, `PhoneSettings` (`read(change)`, `write(change, value)`, each saying
+"not here" with null/false), and `orElse` to fall back from one adapter to the next. Adapters:
+`ShellSettings` (over Wireless debugging, every change), `AppSettings` in the app (settings and Do Not
+Disturb through Android's own APIs, where it may), and `ProfileTest.FakeSettings` behind `ShellSettings`
+in tests. `PhoneSettingsTest` covers the fallback; Kiosk's unpin is a step `Modes.turnOff` takes, run
+only while something is pinned. Restore records keep their `ns key value` lines.
 
-- Port in `engine`: `interface PhoneSettings { fun read(c: Change): String; fun write(c: Change, value: String) }`
-  — or one `apply`/`restore` pair if that proves deeper.
-- Adapters: over a `Shell` (today's `Shell.read/write` in `Profile.kt`), in-app (today's `Local.kt`,
-  without its argv parsing), and a map for tests (replacing `FakeSettings`' argv parsing).
-- `Phone`'s routed shell becomes "in-app adapter, falling back to the shell adapter per change".
-- Tests: keep `ProfileTest`/`ModesTest` at the `applyProfile`/`Modes` interface; delete the
-  argv-shaped assertions that only test the translation.
-- Risk: restore of records written by older versions (same `ns key value` lines; keep the format).
-
-## 3. Screen state out of MainActivity's companion object
+## 3. Screen state out of MainActivity's companion object (next)
 
 Twelve `mutableStateOf` values in a `companion object` are shared by every page, and each page is a
 private composable in one file. Move each page into its own file with an explicit state holder:

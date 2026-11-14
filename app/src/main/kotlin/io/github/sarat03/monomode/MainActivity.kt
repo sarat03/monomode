@@ -135,7 +135,7 @@ class MainActivity : ComponentActivity() {
             open = { Session.open(app) }, debloat = Records.debloater(app), modes = Records.modes(app),
             wirelessOn = { Session.isWirelessDebuggingOn(app) }, saveCopy = { Records.copyToDownloads(app, it) }, onChange = { ps = it },
             switchOff = { if (Session.canSwitch(app)) Session.switch(app, false) },
-            local = { runLocally(app, it) }, paired = { Pairing.isPaired(app) }, switchOn = { Session.canSwitch(app) && Session.switch(app, true) },
+            local = AppSettings(app), pinned = { pinned(app) }, paired = { Pairing.isPaired(app) }, switchOn = { Session.canSwitch(app) && Session.switch(app, true) },
         ).also { phone = it }
     }
 

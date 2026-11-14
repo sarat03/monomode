@@ -40,7 +40,7 @@ class ProfileTest {
 
     @Test fun `e-reader applies then restore returns every value`() {
         val sh = FakeSettings(start); val r = rec()
-        applyProfile(sh, Profile.E_READER, r)
+        applyProfile(ShellSettings(sh), Profile.E_READER, r)
         assertEquals("1", sh.values["secure accessibility_display_daltonizer_enabled"])
         assertEquals("0", sh.values["secure accessibility_display_daltonizer"]) // monochromacy
         assertEquals("0", sh.values["global window_animation_scale"])
@@ -48,30 +48,30 @@ class ProfileTest {
         assertEquals("1", sh.values["global low_power_sticky"]) // restored explicitly; turning low_power off leaves it set
         assertEquals("0", sh.values["system power_save_screenoff_time_state"]) // realme's saver would cut the screen timeout to 30s
         assertEquals("1", sh.values["global zen_mode"]) // priority: total silence leaves the ringer silent after restore (seen on Android 14)
-        restoreProfile(sh, r)
+        restoreProfile(ShellSettings(sh), r)
         assertEquals(start, sh.values) // release gate; unset ones deleted again
     }
 
     @Test fun `options switched off are left alone`() {
         val sh = FakeSettings(start); val r = rec()
-        applyProfile(sh, Profile.E_READER, r, off = setOf("No animations", "Battery saver"))
+        applyProfile(ShellSettings(sh), Profile.E_READER, r, off = setOf("No animations", "Battery saver"))
         assertEquals("1.0", sh.values["global window_animation_scale"])
         assertEquals("0", sh.values["global low_power"])
         assertEquals("1", sh.values["secure accessibility_display_daltonizer_enabled"])
-        restoreProfile(sh, r)
+        restoreProfile(ShellSettings(sh), r)
         assertEquals(start, sh.values)
     }
 
     @Test fun `kiosk always allows pinning and never takes over home`() {
         val sh = FakeSettings(start); val r = rec()
-        applyProfile(sh, Profile.KIOSK, r, off = Profile.KIOSK.options.keys)
+        applyProfile(ShellSettings(sh), Profile.KIOSK, r, off = Profile.KIOSK.options.keys)
         assertEquals("1", sh.values["secure lock_to_app_enabled"])
         assertEquals("com.oppo.launcher/.Launcher", sh.values["home activity"])
     }
 
     @Test fun `the e-reader leaves the launcher alone, its reader opens like an app`() {
         val sh = FakeSettings(start)
-        applyProfile(sh, Profile.E_READER, rec())
+        applyProfile(ShellSettings(sh), Profile.E_READER, rec())
         assertEquals("com.oppo.launcher/.Launcher", sh.values["home activity"])
     }
 
@@ -81,43 +81,43 @@ class ProfileTest {
     }
 
     @Test fun `kiosk asks for the PIN to unpin, or turned off, explicitly does not`() {
-        val on = FakeSettings(start); applyProfile(on, Profile.KIOSK, rec())
+        val on = FakeSettings(start); applyProfile(ShellSettings(on), Profile.KIOSK, rec())
         assertEquals("1", on.values["secure lock_to_app_exit_locked"])
         val sh = FakeSettings(start); val r = rec()
-        applyProfile(sh, Profile.KIOSK, r, off = setOf("Ask for PIN to unpin"))
+        applyProfile(ShellSettings(sh), Profile.KIOSK, r, off = setOf("Ask for PIN to unpin"))
         assertEquals("0", sh.values["secure lock_to_app_exit_locked"]) // Android's own default would still ask
-        restoreProfile(sh, r)
+        restoreProfile(ShellSettings(sh), r)
         assertEquals(start, sh.values)
     }
 
     @Test fun `kiosk keeps the screen on while charging and enables pinning`() {
         val sh = FakeSettings(start); val r = rec()
-        applyProfile(sh, Profile.KIOSK, r)
+        applyProfile(ShellSettings(sh), Profile.KIOSK, r)
         assertEquals("7", sh.values["global stay_on_while_plugged_in"])
         assertEquals("1", sh.values["secure lock_to_app_enabled"])
         assertEquals("1", sh.values["global zen_mode"]) // priority: total silence leaves the ringer silent after restore (seen on Android 14)
-        restoreProfile(sh, r)
+        restoreProfile(ShellSettings(sh), r)
         assertEquals(start, sh.values)
     }
 
     @Test fun `DND goes through the notification service, not the raw setting`() {
         val sh = FakeSettings(start + ("global zen_mode" to "3")); val r = rec()
-        applyProfile(sh, Profile.KIOSK, r)
-        restoreProfile(sh, r)
+        applyProfile(ShellSettings(sh), Profile.KIOSK, r)
+        restoreProfile(ShellSettings(sh), r)
         assertTrue(listOf("cmd", "notification", "set_dnd", "alarms") in sh.calls)
         assertTrue(sh.calls.none { it.take(4) == listOf("settings", "put", "global", "zen_mode") })
     }
 
     @Test fun `a second profile on top refuses, so the original values are never lost`() {
         val sh = FakeSettings(start); val r = rec()
-        applyProfile(sh, Profile.KIOSK, r)
-        assertFailsWith<IllegalStateException> { applyProfile(sh, Profile.E_READER, r) }
+        applyProfile(ShellSettings(sh), Profile.KIOSK, r)
+        assertFailsWith<IllegalStateException> { applyProfile(ShellSettings(sh), Profile.E_READER, r) }
     }
 
     @Test fun `a mode that fails partway undoes what it changed and keeps no record`() {
         // seen on realme UI: shell settings writes are refused unless "Disable permission monitoring" is on
         val sh = FakeSettings(start, denied = setOf("window_animation_scale")); val r = rec()
-        val e = assertFailsWith<java.io.IOException> { applyProfile(sh, Profile.E_READER, r) }
+        val e = assertFailsWith<java.io.IOException> { applyProfile(ShellSettings(sh), Profile.E_READER, r) }
         assertTrue("WRITE_SECURE_SETTINGS" in e.message.orEmpty())
         assertEquals(start, sh.values)
         assertTrue(!r.exists())
@@ -128,10 +128,10 @@ class ProfileTest {
         var puts = 0
         // the first write lands, then the connection is gone for every command, the undo included
         val sh = Shell { a -> if (a.take(2) == listOf("settings", "put") && ++puts > 1 || puts > 1) throw java.net.SocketException("connection lost") else fake.run(a) }
-        assertFailsWith<java.net.SocketException> { applyProfile(sh, Profile.E_READER, r) }
+        assertFailsWith<java.net.SocketException> { applyProfile(ShellSettings(sh), Profile.E_READER, r) }
         assertEquals("1", fake.values["secure accessibility_display_daltonizer_enabled"]) // still changed
         assertTrue(r.exists())
-        restoreProfile(fake, r) // connection back
+        restoreProfile(ShellSettings(fake), r) // connection back
         assertEquals(start, fake.values)
     }
 }
