@@ -120,7 +120,6 @@
     <string name="turn_kiosk_on_first_then">Turn Kiosk on first, then choose the app</string>
     <string name="pinning_turns_off_wireless_debugging">Pinning turns off Wireless debugging. To unpin, %1$s.</string>
     <string name="the_app_fills_the_screen">The app fills the screen and Wireless debugging switches off.</string>
-    <string name="search">Search</string>
     <string name="done">Done</string>
     <string name="monomode_reader">MonoMode reader</string>
     <string name="library">Library</string>
@@ -253,6 +252,15 @@
     <string name="larger_text">Larger text</string>
     <string name="previous_chapter">Previous chapter</string>
     <string name="next_chapter">Next chapter</string>
+    <string name="all_d">All · %1$d</string>
+    <string name="browse">Browse</string>
+    <string name="sort_and_view">Sort and view</string>
+    <string name="continue_book">Continue</string>
+    <string name="close_search">Close search</string>
+    <string name="search">Search</string>
+    <string name="light">Light</string>
+    <string name="listen">Listen</string>
+    <string name="stop">Stop</string>
     <string name="continue_reading">Continue reading</string>
     <string name="open_monomode">Open MonoMode</string>
     <string name="no_apps_chosen_open_monomode">No apps chosen. Open MonoMode from the bottom of the screen and choose them under Kiosk mode.</string>

@@ -132,8 +132,13 @@ Tell the user about these rather than assume they are fine.
   covers a wrong guess.
 - "Have read" is never set automatically. Deleting a book keeps what the reader remembers about it.
 - The library rescans the storage on every return; fine for hundreds of books, not measured beyond four.
-- The controls above the book list (search, sort, "Show as") are three rows tall. The look has not been
-  reviewed by the user since Phase 2.
+- **Redesign (after Phase 5):** the library has a top bar (search, a sort-and-view menu that also holds
+  Statistics, settings), a "Continue reading" card, and one chip row whose "Browse" chip holds authors, series,
+  collections and folders. The reading menu has labelled actions at the bottom (Contents, Search, Text, Light,
+  Listen); "Aa" is a short sheet with Text and Page tabs and no shade over the page; Light is its own sheet.
+  Settings reuses the same controls. Checked on the tablet emulator and at phone size (`wm size 1080x2400`,
+  density 420), not on a real phone. On a phone the "Browse" chip starts off the right edge (the row scrolls),
+  and the "Aa" sheet still covers most of the page.
 - With "Own home screen" switched off in the mode, the library is reachable only through "Enter e-reader".
 - **MonoMode now declares All files access** (`MANAGE_EXTERNAL_STORAGE`). The manifest comment and ADR 0002
   call `QUERY_ALL_PACKAGES` "the one broad permission"; that wording is out of date and the ADR is not updated.

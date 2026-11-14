@@ -265,14 +265,8 @@ class HomeActivity : ComponentActivity() {
                     Text(getString(R.string.leave_e_reader_or_change), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            else Column(Modifier.safeDrawingPadding()) {
-                Row(Modifier.padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(now), style = MaterialTheme.typography.labelLarge)
-                    Spacer(Modifier.weight(1f))
-                    Text("$batteryLevel%", style = MaterialTheme.typography.labelLarge)
-                    IconButton({ settings = true }) { Icon(Icons.Outlined.Settings, getString(R.string.settings)) }
-                }
-                Library(resumes) { reading = it; applyScreen() }
+            else Box(Modifier.safeDrawingPadding()) {
+                Library(resumes, DateFormat.getTimeInstance(DateFormat.SHORT).format(now) + "  ·  $batteryLevel%", { settings = true }) { reading = it; applyScreen() }
             }
         }
     }

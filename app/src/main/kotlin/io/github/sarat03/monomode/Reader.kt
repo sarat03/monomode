@@ -57,6 +57,25 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Tab
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -155,36 +174,88 @@ internal fun loadCover(path: String): ImageBitmap? = if (path.endsWith(".pdf", i
 }
 
 @Composable
-private fun <T> Options(title: Int, options: List<Pair<T, Int>>, selected: T, onPick: (T) -> Unit) = Column {
-    Text(stringResource(title), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        for ((value, label) in options) FilterChip(selected == value, { onPick(value) }, { Text(stringResource(label)) })
+private fun Label(text: Int) = Text(stringResource(text), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+/** A choice of one among a few, as a row of joined buttons. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun <T> Options(title: Int, options: List<Pair<T, Int>>, selected: T, onPick: (T) -> Unit) = Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Label(title)
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+        options.forEachIndexed { i, (value, label) ->
+            SegmentedButton(selected == value, { onPick(value) }, SegmentedButtonDefaults.itemShape(i, options.size), icon = {}) { Text(stringResource(label), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        }
     }
 }
 
-/** The page options every e-reader keeps under "Aa": theme, text size, font, line spacing and margins. */
+/** How the text looks, under "Aa": the paper, size, font, spacing, margins and the text switches. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun LookOptions(look: Look, set: (Look) -> Unit) {
-    Options(R.string.theme, listOf("day" to R.string.theme_day, "sepia" to R.string.theme_sepia, "night" to R.string.theme_night), look.theme) { set(look.copy(theme = it)) }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(stringResource(R.string.text_size), Modifier.weight(1f), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        val smaller = stringResource(R.string.smaller_text); val larger = stringResource(R.string.larger_text)
-        OutlinedButton({ set(look.copy(size = (look.size - 10).coerceAtLeast(70))) }, Modifier.semantics { contentDescription = smaller }) { Text("A−", fontSize = 14.sp) }
-        Text("${look.size}%", Modifier.width(64.dp), textAlign = TextAlign.Center)
-        OutlinedButton({ set(look.copy(size = (look.size + 10).coerceAtMost(250))) }, Modifier.semantics { contentDescription = larger }) { Text("A+", fontSize = 20.sp) }
+internal fun TextOptions(look: Look, set: (Look) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Label(R.string.theme)
+        Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            for ((key, label) in listOf("day" to R.string.theme_day, "sepia" to R.string.theme_sepia, "night" to R.string.theme_night)) {
+                val (paper, ink) = PAPER.getValue(key).let { Color(android.graphics.Color.parseColor(it.first)) to Color(android.graphics.Color.parseColor(it.second)) }
+                val on = look.theme == key
+                val shape = MaterialTheme.shapes.medium
+                // each paper shows itself, so the choice is plain even on a grey screen
+                Column(Modifier.weight(1f).clip(shape).background(paper).border(if (on) 3.dp else 1.dp, if (on) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, shape)
+                    .selectable(on, role = Role.RadioButton) { set(look.copy(theme = key)) }.padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Aa", color = ink, fontFamily = FontFamily.Serif, fontSize = 20.sp)
+                    Text(stringResource(label), color = ink, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
+    }
+    Column {
+        Row { Label(R.string.text_size); Spacer(Modifier.weight(1f)); Text("${look.size}%", style = MaterialTheme.typography.labelLarge) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            fun size(to: Int) { val v = to.coerceIn(70, 250); if (v != look.size) set(look.copy(size = v)) }
+            val smaller = stringResource(R.string.smaller_text); val larger = stringResource(R.string.larger_text); val name = stringResource(R.string.text_size)
+            IconButton({ size(look.size - 10) }, Modifier.semantics { contentDescription = smaller }) { Text("A", fontSize = 14.sp) }
+            Slider(look.size.toFloat(), { size((it / 10).roundToInt() * 10) }, Modifier.weight(1f).semantics { contentDescription = name }, valueRange = 70f..250f)
+            IconButton({ size(look.size + 10) }, Modifier.semantics { contentDescription = larger }) { Text("A", fontSize = 22.sp) }
+        }
     }
     Options(R.string.font, listOf("serif" to R.string.font_serif, "sans-serif" to R.string.font_sans, "" to R.string.font_book), look.font) { set(look.copy(font = it)) }
-    Options(R.string.line_spacing, listOf(130 to R.string.compact, 150 to R.string.normal, 180 to R.string.wide), look.spacing) { set(look.copy(spacing = it)) }
-    Options(R.string.margins, listOf(3 to R.string.narrow, 6 to R.string.normal, 10 to R.string.wide), look.margin) { set(look.copy(margin = it)) }
-    Options(R.string.page_turning, listOf(false to R.string.pages, true to R.string.scrolling), look.scroll) { set(look.copy(scroll = it)) }
-    Column {
-        Text(stringResource(R.string.text), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    val spacing = @Composable { Options(R.string.line_spacing, listOf(130 to R.string.compact, 150 to R.string.normal, 180 to R.string.wide), look.spacing) { set(look.copy(spacing = it)) } }
+    val margins = @Composable { Options(R.string.margins, listOf(3 to R.string.narrow, 6 to R.string.normal, 10 to R.string.wide), look.margin) { set(look.copy(margin = it)) } }
+    // side by side where there is room; on a phone the labels would be cut
+    BoxWithConstraints {
+        if (maxWidth >= 560.dp) Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) { Box(Modifier.weight(1f)) { spacing() }; Box(Modifier.weight(1f)) { margins() } }
+        else Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { spacing(); margins() }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Label(R.string.text)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(look.bold, { set(look.copy(bold = !look.bold)) }, { Text(stringResource(R.string.bold)) })
             FilterChip(look.justify, { set(look.copy(justify = !look.justify)) }, { Text(stringResource(R.string.justify)) })
             FilterChip(look.hyphens, { set(look.copy(hyphens = !look.hyphens)) }, { Text(stringResource(R.string.hyphenate)) })
             FilterChip(look.indent, { set(look.copy(indent = !look.indent)) }, { Text(stringResource(R.string.book_paragraphs)) })
         }
+    }
+}
+
+@Composable
+private fun PageTurning(look: Look, set: (Look) -> Unit) =
+    Options(R.string.page_turning, listOf(false to R.string.pages, true to R.string.scrolling), look.scroll) { set(look.copy(scroll = it)) }
+
+@Composable
+private fun TapOptions(shelf: Shelf) {
+    var taps by remember { mutableStateOf(shelf.taps) }
+    Options(R.string.taps_on_the_page, listOf("sides" to R.string.taps_sides, "swapped" to R.string.taps_swapped, "forward" to R.string.taps_forward), taps) { taps = it; shelf.taps = it }
+}
+
+/** What the line at the foot of the page shows; [onChange] gets the new set once saved. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun StatusOptions(shelf: Shelf, onChange: (Set<String>) -> Unit = {}) = Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    var status by remember { mutableStateOf(shelf.status) }
+    Label(R.string.line_at_the_foot)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        for ((key, label) in listOf("clock" to R.string.status_clock, "title" to R.string.status_chapter, "battery" to R.string.status_battery, "left" to R.string.status_pages_left, "page" to R.string.status_page, "percent" to R.string.status_percent))
+            FilterChip(key in status, { status = if (key in status) status - key else status + key; shelf.status = status; onChange(status) }, { Text(stringResource(label)) })
     }
 }
 
@@ -236,7 +307,8 @@ internal fun ReaderSettings(onScreen: () -> Unit, onBack: () -> Unit, more: @Com
         }
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Section(R.string.page)
-            LookOptions(look) { look = it; shelf.setLook(it) }
+            TextOptions(look) { look = it; shelf.setLook(it) }
+            PageTurning(look) { look = it; shelf.setLook(it) }
             Section(R.string.screen)
             SwitchRow(R.string.colour, if (systemGrey) R.string.colour_is_off_for_the_phone else R.string.off_shows_everything_in_grey, colour && !systemGrey, enabled = !systemGrey) { colour = it; shelf.colour = it; onScreen() }
             Brightness(shelf, onScreen)
@@ -247,16 +319,8 @@ internal fun ReaderSettings(onScreen: () -> Unit, onBack: () -> Unit, more: @Com
             SwitchRow(R.string.keep_the_screen_on, R.string.while_a_book_is_open, keepOn) { keepOn = it; shelf.keepOn = it }
             var volumeKeys by remember { mutableStateOf(shelf.volumeKeys) }
             SwitchRow(R.string.volume_keys_turn_pages, null, volumeKeys) { volumeKeys = it; shelf.volumeKeys = it }
-            var taps by remember { mutableStateOf(shelf.taps) }
-            Options(R.string.taps_on_the_page, listOf("sides" to R.string.taps_sides, "swapped" to R.string.taps_swapped, "forward" to R.string.taps_forward), taps) { taps = it; shelf.taps = it }
-            var status by remember { mutableStateOf(shelf.status) }
-            Column {
-                Text(stringResource(R.string.line_at_the_foot), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for ((key, label) in listOf("clock" to R.string.status_clock, "title" to R.string.status_chapter, "battery" to R.string.status_battery, "left" to R.string.status_pages_left, "page" to R.string.status_page, "percent" to R.string.status_percent))
-                        FilterChip(key in status, { status = if (key in status) status - key else status + key; shelf.status = status }, { Text(stringResource(label)) })
-                }
-            }
+            TapOptions(shelf)
+            StatusOptions(shelf)
             more()
         }
     }
@@ -267,13 +331,14 @@ internal fun ReaderSettings(onScreen: () -> Unit, onBack: () -> Unit, more: @Com
 private fun span(seconds: Long) = if (seconds >= 3600) stringResource(R.string.time_h_min, seconds / 3600, seconds % 3600 / 60) else if (seconds >= 60) stringResource(R.string.time_min, seconds / 60) else stringResource(R.string.time_s, seconds)
 
 /**
- * The library, as e-reader apps lay one out: the book being read on top under "Continue reading", then every EPUB
- * on the phone. The row of chips narrows it to a reading list, or groups it by author, series, collection or
- * folder; under them a search box, the sort order and list or grid. Holding a book (or its ⋮) opens its details.
- * Rescans whenever [resumes] changes.
+ * The library, as e-reader apps lay one out: a bar with search, sort and view, and settings; the book being read
+ * in a card under it; then every book on the phone. One row of chips narrows it to a reading list, and its "Browse"
+ * chip groups it by author, series, collection or folder. Holding a book (or its ⋮) opens its details.
+ * [clock] is the time and battery shown in the bar. Rescans whenever [resumes] changes.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun Library(resumes: Int, onOpen: (String) -> Unit) {
+internal fun Library(resumes: Int, clock: String, onSettings: () -> Unit, onOpen: (String) -> Unit) {
     val ctx = LocalContext.current
     val shelf = remember { Records.shelf(ctx) }
     val access = remember(resumes) { Environment.isExternalStorageManager() }
@@ -286,6 +351,9 @@ internal fun Library(resumes: Int, onOpen: (String) -> Unit) {
     var sort by remember { mutableStateOf(shelf.sort) }
     var grid by remember { mutableStateOf(shelf.grid) }
     var detail by remember { mutableStateOf<BookInfo?>(null) }
+    var searching by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
+    var browse by remember { mutableStateOf(false) }
     val root = Environment.getExternalStorageDirectory()
     // shortcut: rescans on every return; fine for hundreds of books, cache the list if a library gets slow
     LaunchedEffect(resumes, changed) {
@@ -295,7 +363,7 @@ internal fun Library(resumes: Int, onOpen: (String) -> Unit) {
             }
         }
     }
-    BackHandler(group != null || view != "all") { if (group != null) group = null else view = "all" }
+    BackHandler(searching || group != null || view != "all") { if (searching) { searching = false; query = "" } else if (group != null) group = null else view = "all" }
 
     val list = books
     val grouping = view in setOf("authors", "series", "collections", "folders")
@@ -311,14 +379,44 @@ internal fun Library(resumes: Int, onOpen: (String) -> Unit) {
     }
     /** A group's name as shown: folders without the storage root, a missing author named as such. */
     @Composable fun named(name: String) = when { view == "folders" -> name.removePrefix(root.path).ifEmpty { "/" }; name.isEmpty() -> stringResource(R.string.unknown_author); else -> name }
-    @Composable fun Heading(text: Int) = Text(stringResource(text), Modifier.padding(horizontal = 16.dp, vertical = 12.dp).semantics { heading() }, style = MaterialTheme.typography.titleLarge)
     @Composable fun Plain(text: Int) = Text(stringResource(text), Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
+    @Composable fun Check(on: Boolean) { if (on) Icon(Icons.Filled.Check, null) }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (searching) {
+                val focus = remember { FocusRequester() }
+                OutlinedTextField(query, { query = it }, Modifier.weight(1f).focusRequester(focus), singleLine = true, placeholder = { Text(stringResource(R.string.search_books)) })
+                LaunchedEffect(Unit) { focus.requestFocus() }
+                IconButton({ searching = false; query = "" }) { Icon(Icons.Filled.Close, stringResource(R.string.close_search)) }
+            } else {
+                Text(stringResource(R.string.library), Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.headlineSmall)
+                Text(clock, Modifier.padding(end = 8.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (!list.isNullOrEmpty()) {
+                    IconButton({ searching = true }) { Icon(Icons.Filled.Search, stringResource(R.string.search_books)) }
+                    Box {
+                        IconButton({ menu = true }) { Icon(AppIcons.Sort, stringResource(R.string.sort_and_view)) }
+                        DropdownMenu(menu, { menu = false }) {
+                            @Composable fun Title(text: Int) = Text(stringResource(text), Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Title(R.string.sort_by)
+                            for ((key, label) in listOf("recent" to R.string.sort_recent, "title" to R.string.sort_title, "author" to R.string.sort_author))
+                                DropdownMenuItem({ Text(stringResource(label)) }, { sort = key; shelf.sort = key; menu = false }, trailingIcon = { Check(sort == key) })
+                            HorizontalDivider()
+                            Title(R.string.show_as)
+                            for ((key, label) in listOf(false to R.string.as_list, true to R.string.as_grid))
+                                DropdownMenuItem({ Text(stringResource(label)) }, { grid = key; shelf.grid = key; menu = false }, trailingIcon = { Check(grid == key) })
+                            HorizontalDivider()
+                            DropdownMenuItem({ Text(stringResource(R.string.statistics)) }, { view = "stats"; group = null; menu = false })
+                        }
+                    }
+                }
+                IconButton(onSettings) { Icon(Icons.Outlined.Settings, stringResource(R.string.settings)) }
+            }
+        }
+        BoxWithConstraints(Modifier.weight(1f)) {
         val columns = (maxWidth / 132.dp).toInt().coerceAtLeast(3)
         LazyColumn(Modifier.fillMaxSize()) {
-            if (reading != null) { item { Heading(R.string.continue_reading) }; item { BookRow(reading, onOpen, { detail = reading }, big = true) } }
-            item { Heading(R.string.library) }
+            if (reading != null) item { ContinueCard(reading, onOpen) { detail = reading } }
             if (!access) item {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(stringResource(R.string.reader_needs_file_access))
@@ -329,13 +427,27 @@ internal fun Library(resumes: Int, onOpen: (String) -> Unit) {
             else if (list.isEmpty()) item { Plain(R.string.no_books_found) }
             else {
                 item {
-                    Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        for ((key, label) in listOf("all" to R.string.all_books, "favourites" to R.string.favourites, "toread" to R.string.to_read, "read" to R.string.have_read, "authors" to R.string.authors,
-                            "series" to R.string.series, "collections" to R.string.collections, "folders" to R.string.folders, "stats" to R.string.statistics))
-                            FilterChip(view == key, { view = key; group = null }, { Text(stringResource(label)) })
+                    Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        for ((key, label) in listOf("all" to R.string.all_books, "toread" to R.string.to_read, "favourites" to R.string.favourites, "read" to R.string.have_read))
+                            FilterChip(view == key, { view = key; group = null }, { Text(if (key == "all") stringResource(R.string.all_d, list.size) else stringResource(label)) })
+                        val ways = listOf("authors" to R.string.authors, "series" to R.string.series, "collections" to R.string.collections, "folders" to R.string.folders)
+                        Box {
+                            FilterChip(grouping, { browse = true }, { Text(stringResource(ways.firstOrNull { it.first == view }?.second ?: R.string.browse)) }, trailingIcon = { Icon(Icons.Filled.ArrowDropDown, null) })
+                            DropdownMenu(browse, { browse = false }) {
+                                for ((key, label) in ways) DropdownMenuItem({ Text(stringResource(label)) }, { view = key; group = null; browse = false }, trailingIcon = { Check(view == key) })
+                            }
+                        }
                     }
                 }
-                if (view == "stats") statistics(shelf, list)
+                if (view == "stats") {
+                    item {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton({ view = "all" }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.back)) }
+                            Text(stringResource(R.string.statistics), Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium)
+                        }
+                    }
+                    statistics(shelf, list)
+                }
                 else if (grouping && group == null) {
                     val found = groups(list, view)
                     if (found.isEmpty()) item { Plain(R.string.nothing_here_yet) }
@@ -357,13 +469,6 @@ internal fun Library(resumes: Int, onOpen: (String) -> Unit) {
                             }
                         }
                     }
-                    item {
-                        Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            OutlinedTextField(query, { query = it }, Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text(stringResource(R.string.search_books)) })
-                            if (view != "series") Options(R.string.sort_by, listOf("recent" to R.string.sort_recent, "title" to R.string.sort_title, "author" to R.string.sort_author), sort) { sort = it; shelf.sort = it }
-                            Options(R.string.show_as, listOf(false to R.string.as_list, true to R.string.as_grid), grid) { grid = it; shelf.grid = it }
-                        }
-                    }
                     if (shown.isEmpty()) item { Plain(if (query.isNotBlank()) R.string.no_books_match else R.string.nothing_here_yet) }
                     if (grid) items(shown.chunked(columns)) { row ->
                         Row(Modifier.padding(horizontal = 8.dp)) {
@@ -374,6 +479,7 @@ internal fun Library(resumes: Int, onOpen: (String) -> Unit) {
                     else items(shown, key = { it.path }) { b -> BookRow(b, onOpen, { detail = b }) }
                 }
             }
+        }
         }
     }
     detail?.let { b -> BookDetails(b, shelf, onOpen, { changed++ }) { detail = null } }
@@ -420,28 +526,57 @@ private fun tags(b: BookInfo) = listOfNotNull(
     when (b.status) { "toread" -> stringResource(R.string.to_read); "read" -> stringResource(R.string.have_read); else -> null },
 ).joinToString("  ·  ")
 
+/** The book being read, on top of the library, with a button straight back into it. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun BookRow(b: BookInfo, onOpen: (String) -> Unit, onMore: () -> Unit, big: Boolean = false) {
+private fun ContinueCard(b: BookInfo, onOpen: (String) -> Unit, onMore: () -> Unit) {
+    val cover by produceState<ImageBitmap?>(null, b.path) { value = withContext(Dispatchers.IO) { loadCover(b.path) } }
+    val details = stringResource(R.string.book_details)
+    Surface(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer) {
+        Row(Modifier.combinedClickable(onLongClickLabel = details, onLongClick = onMore) { onOpen(b.path) }.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            val slot = Modifier.size(84.dp, 120.dp).border(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            cover?.let { Image(it, null, slot, contentScale = ContentScale.Crop) } ?: Box(slot)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(R.string.continue_reading), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text(b.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (b.author.isNotEmpty()) Text(b.author, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val p = b.place?.progress ?: 0f
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LinearProgressIndicator({ p }, Modifier.weight(1f).height(4.dp))
+                    Text("${(p * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Button({ onOpen(b.path) }) { Text(stringResource(R.string.continue_book)) }
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onMore) { Icon(Icons.Filled.MoreVert, details) }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun BookRow(b: BookInfo, onOpen: (String) -> Unit, onMore: () -> Unit) {
     val cover by produceState<ImageBitmap?>(null, b.path) { value = withContext(Dispatchers.IO) { loadCover(b.path) } }
     val details = stringResource(R.string.book_details)
     Row(Modifier.fillMaxWidth().combinedClickable(onLongClickLabel = details, onLongClick = onMore) { onOpen(b.path) }.padding(start = 16.dp, top = 10.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-        val slot = (if (big) Modifier.size(98.dp, 140.dp) else Modifier.size(56.dp, 80.dp)).border(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        val slot = Modifier.size(56.dp, 80.dp).border(1.dp, MaterialTheme.colorScheme.outlineVariant)
         cover?.let { Image(it, null, slot, contentScale = ContentScale.Crop) } ?: Box(slot)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (big) 8.dp else 4.dp)) {
-            Text(b.title, style = if (big) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(b.title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (b.author.isNotEmpty()) Text(b.author, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
             tags(b).takeIf { it.isNotEmpty() }?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             val p = b.place?.progress
             if (p == null) Text(stringResource(R.string.new_book), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                LinearProgressIndicator({ p }, Modifier.weight(1f).height(if (big) 5.dp else 3.dp))
+                LinearProgressIndicator({ p }, Modifier.weight(1f).height(3.dp))
                 Text("${(p * 100).roundToInt()}%", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         IconButton(onMore) { Icon(Icons.Filled.MoreVert, details) }
     }
-    if (!big) HorizontalDivider(Modifier.padding(start = 88.dp), color = MaterialTheme.colorScheme.outlineVariant)
+    HorizontalDivider(Modifier.padding(start = 88.dp), color = MaterialTheme.colorScheme.outlineVariant)
 }
 
 /** A book in the cover grid. */
@@ -450,11 +585,13 @@ private fun BookRow(b: BookInfo, onOpen: (String) -> Unit, onMore: () -> Unit, b
 private fun BookCell(b: BookInfo, onOpen: (String) -> Unit, onMore: () -> Unit, modifier: Modifier) {
     val cover by produceState<ImageBitmap?>(null, b.path) { value = withContext(Dispatchers.IO) { loadCover(b.path) } }
     Column(modifier.combinedClickable(onLongClickLabel = stringResource(R.string.book_details), onLongClick = onMore) { onOpen(b.path) }.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        val slot = Modifier.fillMaxWidth().aspectRatio(0.7f).border(1.dp, MaterialTheme.colorScheme.outlineVariant)
-        // a book without a cover shows its title where the cover would be
-        cover?.let { Image(it, null, slot, contentScale = ContentScale.Crop) } ?: Box(slot.padding(8.dp), contentAlignment = Alignment.Center) { Text(b.title, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center, maxLines = 4, overflow = TextOverflow.Ellipsis) }
-        Text(b.title, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        val slot = Modifier.fillMaxWidth().aspectRatio(0.7f).clip(MaterialTheme.shapes.small).border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small)
+        // a book without a cover shows its title where the cover would be, on a plain tinted card
+        cover?.let { Image(it, null, slot, contentScale = ContentScale.Crop) }
+            ?: Box(slot.background(MaterialTheme.colorScheme.surfaceContainerHighest).padding(10.dp), contentAlignment = Alignment.Center) { Text(b.title, style = MaterialTheme.typography.titleSmall, fontFamily = FontFamily.Serif, textAlign = TextAlign.Center, maxLines = 5, overflow = TextOverflow.Ellipsis) }
         b.place?.progress?.let { p -> LinearProgressIndicator({ p }, Modifier.fillMaxWidth().height(3.dp)) }
+        Text(b.title, style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (b.author.isNotEmpty()) Text(b.author, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -673,6 +810,7 @@ internal fun Reading(path: String, onScreen: () -> Unit, onClose: () -> Unit) {
     /** A footnote being shown: its text, and where its link leads (chapter, anchor). */
     var footnote by remember { mutableStateOf<Triple<String, Int, String?>?>(null) }
     var speaking by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf(shelf.status) }
     val voice = remember { arrayOfNulls<TextToSpeech>(1) }
     val density = ctx.resources.displayMetrics.density
 
@@ -820,7 +958,6 @@ internal fun Reading(path: String, onScreen: () -> Unit, onClose: () -> Unit) {
             AndroidView({ web }, Modifier.weight(1f).fillMaxWidth())
             // the quiet line every e-reader keeps at the foot of the page
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                val status = remember { shelf.status }
                 // clock and battery, refreshed twice a minute while they are shown
                 val tick by produceState(0, status) { while ("clock" in status || "battery" in status) { delay(30_000); value++ } }
                 val left = listOfNotNull(
@@ -840,7 +977,7 @@ internal fun Reading(path: String, onScreen: () -> Unit, onClose: () -> Unit) {
         // a bookmarked page wears a ribbon in the corner that was tapped
         if (marked) Box(Modifier.align(Alignment.TopEnd).padding(end = 20.dp).size(14.dp, 30.dp).background(MaterialTheme.colorScheme.primary))
         before?.let { (c, f, was) ->
-            FilledTonalButton({ before = null; go(c, f) }, Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = if (bars) 120.dp else 32.dp)) {
+            FilledTonalButton({ before = null; go(c, f) }, Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = if (bars) 190.dp else 32.dp)) {
                 Text(stringResource(R.string.back_to_s, was))
             }
         }
@@ -851,13 +988,9 @@ internal fun Reading(path: String, onScreen: () -> Unit, onClose: () -> Unit) {
                     IconButton(onClose) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, stringResource(R.string.library)) }
                     Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
                         Text(book.title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (book.author.isNotEmpty()) Text(book.author, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(title.ifEmpty { numbered }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    IconButton({ sheet = "search" }) { Icon(Icons.Filled.Search, stringResource(R.string.search_in_the_book)) }
                     IconButton(::toggleMark) { Icon(Icons.Filled.Star, stringResource(if (marked) R.string.remove_bookmark else R.string.add_bookmark), tint = if (marked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline) }
-                    IconButton({ sheet = "contents" }) { Icon(Icons.AutoMirrored.Outlined.List, stringResource(R.string.contents)) }
-                    val textAndPage = stringResource(R.string.text_and_page)
-                    TextButton({ sheet = "look" }, Modifier.semantics { contentDescription = textAndPage }) { Text("Aa", fontSize = 20.sp) }
                 }
             }
             Surface(Modifier.align(Alignment.BottomStart).fillMaxWidth(), color = bar) {
@@ -870,20 +1003,23 @@ internal fun Reading(path: String, onScreen: () -> Unit, onClose: () -> Unit) {
                             onValueChangeFinished = { drag?.let { v -> val (c, f) = book.locate(v); jump(c, f) }; drag = null })
                         IconButton({ jump(chapter + 1, 0f) }, enabled = chapter < book.spine.lastIndex) { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, stringResource(R.string.next_chapter)) }
                     }
-                    Row(Modifier.align(Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
-                        // the place, and a tap on it to type one
-                        TextButton({ sheet = "goto" }) {
-                            Text(stringResource(R.string.chapter_d_of_d, chapter + 1, book.spine.size) + "  ·  " + (drag?.let { "${(it * 100).roundToInt()}%" } ?: percent) + "  ·  " + stringResource(R.string.go_to))
-                        }
-                        if (speaking) IconButton(::stopSpeaking) { Icon(Icons.Filled.Close, stringResource(R.string.stop_reading_aloud)) }
-                        else IconButton({ readAloud(); bars = false }) { Icon(Icons.Filled.PlayArrow, stringResource(R.string.read_aloud)) }
+                    // the place, and a tap on it to type one
+                    TextButton({ sheet = "goto" }, Modifier.align(Alignment.CenterHorizontally)) {
+                        Text(listOfNotNull(if (pages > 0 && drag == null) stringResource(R.string.page_d_of_d, page + 1, pages) else null, drag?.let { "${(it * 100).roundToInt()}%" } ?: percent, stringResource(R.string.go_to)).joinToString("  ·  "))
+                    }
+                    // the moves a reader makes most, in reach of the thumb and named, not only drawn
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        Action(Icons.AutoMirrored.Outlined.List, R.string.contents) { sheet = "contents" }
+                        Action(Icons.Filled.Search, R.string.search) { sheet = "search" }
+                        Action(null, R.string.text) { sheet = "look" }
+                        Action(AppIcons.Light, R.string.light) { sheet = "light" }
+                        if (speaking) Action(Icons.Filled.Close, R.string.stop, ::stopSpeaking) else Action(Icons.Filled.PlayArrow, R.string.listen) { readAloud(); bars = false }
                     }
                 }
             }
         }
     }
 
-    // fully open at once: half open, the lower options sit off screen in landscape
     val whole = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     if (sheet == "contents") ModalBottomSheet({ sheet = null }, sheetState = whole) {
         var tab by remember { mutableStateOf("contents") }
@@ -961,11 +1097,30 @@ internal fun Reading(path: String, onScreen: () -> Unit, onClose: () -> Unit) {
             confirmButton = { TextButton({ val (c, f) = book.locate(to!! / 100); jump(c, f); sheet = null; bars = false }, enabled = to != null) { Text(stringResource(R.string.go)) } },
             dismissButton = { TextButton({ sheet = null }) { Text(stringResource(android.R.string.cancel)) } })
     }
-    if (sheet == "look") ModalBottomSheet({ sheet = null }, sheetState = whole) {
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Brightness(shelf, onScreen)
-            LookOptions(look, ::restyle)
-            Spacer(Modifier.height(8.dp))
+    // no shade over the page: a change shows on the page above as it is made
+    if (sheet == "look") ModalBottomSheet({ sheet = null }, sheetState = whole, scrimColor = Color.Transparent) {
+        var tab by remember { mutableStateOf(0) }
+        Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
+            PrimaryTabRow(tab) {
+                Tab(tab == 0, { tab = 0 }, text = { Text(stringResource(R.string.text)) })
+                Tab(tab == 1, { tab = 1 }, text = { Text(stringResource(R.string.page)) })
+            }
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (tab == 0) TextOptions(look, ::restyle)
+                else { PageTurning(look, ::restyle); TapOptions(shelf); StatusOptions(shelf) { status = it } }
+            }
         }
     }
+    if (sheet == "light") ModalBottomSheet({ sheet = null }, sheetState = whole, scrimColor = Color.Transparent) {
+        Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp)) { Brightness(shelf, onScreen) }
+    }
 }
+
+/** A button in the reading menu: an icon (or "Aa" for [icon] null) with its name under it. */
+@Composable
+private fun Action(icon: ImageVector?, label: Int, onClick: () -> Unit) =
+    Column(Modifier.widthIn(min = 64.dp).clip(MaterialTheme.shapes.medium).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 8.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        if (icon != null) Icon(icon, null) else Text("Aa", Modifier.height(24.dp), fontSize = 18.sp)
+        Text(stringResource(label), style = MaterialTheme.typography.labelMedium)
+    }
