@@ -45,6 +45,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.runtime.key
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
+import androidx.window.core.layout.WindowSizeClass
 import androidx.compose.foundation.BorderStroke
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Spacer
@@ -53,6 +59,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
@@ -182,7 +189,16 @@ class MainActivity : ComponentActivity() {
     private fun devOptionsOn() = Settings.Global.getInt(contentResolver, Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) == 1
 
     @Composable
-    private fun Screen() {
+    private fun Screen() = NavigationSuiteScaffold(
+        navigationSuiteItems = {
+            item(tab == Page.HOME || tab == Page.MODES, { openMode = null; tab = Page.HOME }, { Icon(Icons.Outlined.Home, null) }, label = { Text("Home") })
+            item(tab == Page.CHECK, { tab = Page.CHECK }, { Icon(AppIcons.Shield, null) }, label = { Text("Network") })
+            item(tab == Page.CLEAN, { tab = Page.CLEAN }, { Icon(AppIcons.Broom, null) }, label = { Text("Cleaner") })
+            item(tab == Page.SETTINGS, { tab = Page.SETTINGS }, { Icon(Icons.Outlined.Settings, null) }, label = { Text("Settings") })
+        },
+        // phones keep Home's tiles as the navigation; no bottom bar
+        layoutType = if (rail()) NavigationSuiteType.NavigationRail else NavigationSuiteType.None,
+    ) {
         Scaffold(contentWindowInsets = WindowInsets(0)) { pad -> Column(Modifier.padding(pad).safeDrawingPadding().padding(16.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ps.busy?.let { Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(it, style = MaterialTheme.typography.bodyMedium) } }
             ps.message?.let { Note(it) }
@@ -195,8 +211,12 @@ class MainActivity : ComponentActivity() {
         } }
     }
 
+    /** Tablet width with a session: the rail replaces Home's tool rows and the pages' back arrows. */
     @Composable
-    private fun PairScreen() = Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    private fun rail() = ps.connected && currentWindowAdaptiveInfo().windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND)
+
+    @Composable
+    private fun PairScreen() = Column(Modifier.widthIn(max = 600.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         AppHeader()
         Text(getString(R.string.set_up_once), style = MaterialTheme.typography.headlineSmall)
         Text(getString(R.string.pair_once_over_wireless_debugging), color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -216,7 +236,7 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun StartScreen() = Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    private fun StartScreen() = Column(Modifier.widthIn(max = 600.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         AppHeader()
         Hero(
             neutralTone(), if (ps.wirelessOn) Icons.Outlined.CheckCircle else Icons.Outlined.Info,
@@ -240,7 +260,7 @@ class MainActivity : ComponentActivity() {
             Icon(painterResource(R.drawable.ic_launcher_monochrome), null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onPrimary)
         }
         Text(getString(R.string.monomode), Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.headlineMedium)
-        IconButton({ tab = Page.SETTINGS }) { Icon(Icons.Outlined.Settings, getString(R.string.settings)) }
+        if (!rail()) IconButton({ tab = Page.SETTINGS }) { Icon(Icons.Outlined.Settings, getString(R.string.settings)) }
     }
 
     @Composable
@@ -255,9 +275,19 @@ class MainActivity : ComponentActivity() {
     private fun SessionScreen() = when (tab) {
         Page.CHECK -> Paged(getString(R.string.network_access)) { CheckTab() }
         Page.CLEAN -> Paged(getString(R.string.app_cleaner), bottom = cleanupBar()) { CleanupTab() }
-        Page.MODES -> openMode?.let { p -> Paged(p.label, back = { openMode = null; tab = Page.HOME }) { ModePage(p) } } ?: HomeScroll()
-        else -> HomeScroll()
+        else -> if (twoPane()) Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+            Box(Modifier.weight(1f)) { HomeScroll() }
+            Box(Modifier.weight(1f)) { openMode?.let { ModePaged(it) } ?: Text(getString(R.string.choose_a_mode_to_set_it_up), Modifier.padding(top = 72.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        } else openMode?.takeIf { tab == Page.MODES }?.let { ModePaged(it) } ?: HomeScroll()
     }
+
+    // keyed so switching modes in the side pane doesn't carry one mode's picks into the other
+    @Composable
+    private fun ModePaged(p: Profile) = key(p) { Paged(p.label, back = { openMode = null; tab = Page.HOME }) { ModePage(p) } }
+
+    /** Wide tablet with the rail: Home's modes on the left, the open mode's page on the right. */
+    @Composable
+    private fun twoPane() = rail() && currentWindowAdaptiveInfo().windowSizeClass.isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND)
 
     @Composable
     private fun HomeScroll() = Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) { HomeTab() }
@@ -265,10 +295,11 @@ class MainActivity : ComponentActivity() {
     /** A page: back arrow and title on top, content scrolling, an optional action bar pinned at the bottom; Android's Back does [back]. */
     @Composable
     private fun Paged(title: String, back: () -> Unit = { tab = Page.HOME }, bottom: (@Composable () -> Unit)? = null, content: @Composable () -> Unit) =
-        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.widthIn(max = 840.dp).fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             BackHandler(onBack = back)
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, getString(R.string.back)) }
+                // a mode page sits under Home, so it keeps its arrow next to the rail
+                if (openMode != null && tab == Page.MODES || !rail()) IconButton(back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, getString(R.string.back)) }
                 Text(title, Modifier.semantics { heading() }, style = MaterialTheme.typography.headlineSmall)
             }
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) { content() }
@@ -364,9 +395,12 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        Section(getString(R.string.tools))
-        HomeRow(AppIcons.Shield, getString(R.string.network_access), if (r == null) getString(R.string.see_which_apps_use_the) else if (look == 0) getString(R.string.nothing_to_look_at) else getString(R.string.s_1x_to_look_at, look)) { tab = Page.CHECK }
-        HomeRow(AppIcons.Broom, getString(R.string.app_cleaner), if (ps.removed.isEmpty()) getString(R.string.remove_bloatware_and_unused_apps) else getString(R.string.s_1x_removed_or_disabled, ps.removed.size)) { tab = Page.CLEAN }
+        // tablets reach the tools from the rail
+        if (!rail()) {
+            Section(getString(R.string.tools))
+            HomeRow(AppIcons.Shield, getString(R.string.network_access), if (r == null) getString(R.string.see_which_apps_use_the) else if (look == 0) getString(R.string.nothing_to_look_at) else getString(R.string.s_1x_to_look_at, look)) { tab = Page.CHECK }
+            HomeRow(AppIcons.Broom, getString(R.string.app_cleaner), if (ps.removed.isEmpty()) getString(R.string.remove_bloatware_and_unused_apps) else getString(R.string.s_1x_removed_or_disabled, ps.removed.size)) { tab = Page.CLEAN }
+        }
         val w = warnTone()
         Card(colors = CardDefaults.cardColors(w.bg, w.fg), modifier = Modifier.fillMaxWidth()) {
             Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

@@ -68,6 +68,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -229,7 +231,9 @@ class HomeActivity : ComponentActivity() {
         // no mode takes over home: the launcher stays, and the e-reader's library opens like an app
         mode = modes.active
         // the reader is full screen and draws its own clock; the everyday launcher keeps the status bar and its notifications
-        window.insetsController?.run { if (reading == null && !library) show(WindowInsets.Type.statusBars()) else hide(WindowInsets.Type.statusBars()) }
+        // a tablet's taskbar is its navigation bar and shows every app, so the reader hides it too; phones keep their gesture bar
+        val bars = WindowInsets.Type.statusBars() or (if (resources.configuration.smallestScreenWidthDp >= 600) WindowInsets.Type.navigationBars() else 0)
+        window.insetsController?.run { if (reading == null && !library) show(bars) else hide(bars) }
         batteryLevel = battery()
         wirelessOn = Session.isWirelessDebuggingOn(this)
         val picked = mode?.let { modes.apps(it) }.orEmpty()
@@ -350,7 +354,9 @@ class HomeActivity : ComponentActivity() {
         val paper = if (dark) Color.Black else Color.White
         val serif = FontFamily.Serif
         val main = reader
-        Column(Modifier.fillMaxSize().background(paper).safeDrawingPadding().padding(24.dp).verticalScroll(rememberScrollState())) {
+        Column(Modifier.fillMaxSize().background(paper).safeDrawingPadding().padding(24.dp)
+            // a book-width column on tablets, centred on the paper
+            .wrapContentWidth().widthIn(max = 640.dp).verticalScroll(rememberScrollState())) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(DateFormat.getTimeInstance(DateFormat.SHORT).format(now), color = ink, fontFamily = serif, fontSize = 16.sp)
                 Spacer(Modifier.weight(1f))
