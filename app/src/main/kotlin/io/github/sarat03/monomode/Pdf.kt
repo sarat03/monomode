@@ -128,7 +128,7 @@ internal fun PdfReading(path: String, onClose: () -> Unit) {
                 image?.let { Image(it, label, Modifier.fillMaxSize(), contentScale = ContentScale.Fit) }
             }
             val status = remember { shelf.status }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.End) {
+            if (remember { shelf.infoLine }) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.End) {
                 Text(listOfNotNull(label.takeIf { "page" in status }, "${((page + 1f) / count * 100).roundToInt()}%".takeIf { "percent" in status }).joinToString("  ·  "), color = Color.Black.copy(alpha = 0.7f), fontSize = 12.sp)
             }
         }

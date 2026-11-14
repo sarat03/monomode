@@ -255,18 +255,13 @@ class HomeActivity : ComponentActivity() {
             val path = reading
             // outside E-reader mode there is no library behind a book that was handed over: closing it leaves
             if (path != null) key(path) { Reading(path, ::applyScreen) { reading = null; resumes++; applyScreen(); if (mode != Profile.E_READER) finish() } }
-            // the other apps and MonoMode live in Settings, not under the books: a growing library would push them out of reach
+            // the other apps live in Settings, not under the books, where a growing library would push them out of reach; MonoMode is in the library's bar
             else if (settings) ReaderSettings(::applyScreen, { settings = false }) {
                 if (apps.isNotEmpty()) Text(getString(R.string.other_apps), Modifier.padding(top = 12.dp).semantics { heading() }, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                 for (a in apps) Text(a.label, Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { open(a.pkg) }.padding(vertical = 12.dp), style = MaterialTheme.typography.bodyLarge)
-                Text(getString(R.string.monomode), Modifier.padding(top = 12.dp).semantics { heading() }, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                Column(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable { openMonoMode() }.padding(vertical = 8.dp)) {
-                    Text(getString(R.string.open_monomode), style = MaterialTheme.typography.bodyLarge)
-                    Text(getString(R.string.leave_e_reader_or_change), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
             }
             else Box(Modifier.safeDrawingPadding()) {
-                Library(resumes, DateFormat.getTimeInstance(DateFormat.SHORT).format(now) + "  ·  $batteryLevel%", { settings = true }) { reading = it; applyScreen() }
+                Library(resumes, DateFormat.getTimeInstance(DateFormat.SHORT).format(now) + "  ·  $batteryLevel%", ::openMonoMode, { settings = true }) { reading = it; applyScreen() }
             }
         }
     }

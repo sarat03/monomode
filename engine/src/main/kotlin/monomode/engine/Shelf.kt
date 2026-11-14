@@ -75,6 +75,11 @@ class Shelf(private val store: Store, private val now: () -> Long = System::curr
         get() = store.get("volumeKeys") != "false"
         set(v) = store.put("volumeKeys", v.toString())
 
+    /** Whether the info line at the foot of the page is shown at all; off, the page has the screen to itself and [status] is kept for later. */
+    var infoLine: Boolean
+        get() = store.get("infoLine") != "false"
+        set(v) = store.put("infoLine", v.toString())
+
     /** What the line at the foot of the page shows: any of "clock", "title", "battery", "left" (pages left in the chapter), "page", "percent". */
     var status: Set<String>
         get() = store.get("status")?.split(',')?.filter { it.isNotEmpty() }?.toSet() ?: setOf("title", "page", "percent")

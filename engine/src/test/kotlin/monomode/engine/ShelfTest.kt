@@ -77,6 +77,15 @@ class ShelfTest {
         assertEquals(emptySet(), shelf.status)
     }
 
+    @Test fun `the info line is shown until switched off, and its contents are kept while it is off`() {
+        assertEquals(true, shelf.infoLine)
+        shelf.status = setOf("clock"); shelf.infoLine = false
+        assertEquals(false, shelf.infoLine)
+        assertEquals(setOf("clock"), shelf.status)
+        shelf.infoLine = true
+        assertEquals(true, shelf.infoLine)
+    }
+
     @Test fun `tap layout and scrolling instead of pages keep their choice`() {
         assertEquals("sides", shelf.taps)
         assertEquals(false, shelf.look(dark = false).scroll)

@@ -153,7 +153,6 @@
     <string name="colour">Colour</string>
     <string name="off_shows_everything_in_grey">Off shows the reader in grey, like e-paper.</string>
     <string name="colour_is_off_for_the_phone">Off for the whole phone: E-reader mode\'s Grayscale screen option is on. Switch that option off in MonoMode to choose here.</string>
-    <string name="leave_e_reader_or_change">Leave E-reader mode or change it</string>
     <string name="text">Text</string>
     <string name="bold">Bold</string>
     <string name="justify">Justify</string>
@@ -252,6 +251,8 @@
     <string name="larger_text">Larger text</string>
     <string name="previous_chapter">Previous chapter</string>
     <string name="next_chapter">Next chapter</string>
+    <string name="info_line">Info line</string>
+    <string name="info_line_note">The clock, chapter and place at the foot of the page</string>
     <string name="all_d">All · %1$d</string>
     <string name="browse">Browse</string>
     <string name="sort_and_view">Sort and view</string>

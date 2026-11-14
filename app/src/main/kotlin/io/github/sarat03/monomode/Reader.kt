@@ -76,6 +76,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.res.painterResource
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -247,15 +248,22 @@ private fun TapOptions(shelf: Shelf) {
     Options(R.string.taps_on_the_page, listOf("sides" to R.string.taps_sides, "swapped" to R.string.taps_swapped, "forward" to R.string.taps_forward), taps) { taps = it; shelf.taps = it }
 }
 
-/** What the line at the foot of the page shows; [onChange] gets the new set once saved. */
+/**
+ * The info line at the foot of the page: shown or not (some readers find it a distraction), and what it shows.
+ * [onShown] and [onChange] get each choice once saved.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun StatusOptions(shelf: Shelf, onChange: (Set<String>) -> Unit = {}) = Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+private fun StatusOptions(shelf: Shelf, onShown: (Boolean) -> Unit = {}, onChange: (Set<String>) -> Unit = {}) = Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    var shown by remember { mutableStateOf(shelf.infoLine) }
     var status by remember { mutableStateOf(shelf.status) }
-    Label(R.string.line_at_the_foot)
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        for ((key, label) in listOf("clock" to R.string.status_clock, "title" to R.string.status_chapter, "battery" to R.string.status_battery, "left" to R.string.status_pages_left, "page" to R.string.status_page, "percent" to R.string.status_percent))
-            FilterChip(key in status, { status = if (key in status) status - key else status + key; shelf.status = status; onChange(status) }, { Text(stringResource(label)) })
+    SwitchRow(R.string.info_line, R.string.info_line_note, shown) { shown = it; shelf.infoLine = it; onShown(it) }
+    if (shown) {
+        Label(R.string.line_at_the_foot)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for ((key, label) in listOf("clock" to R.string.status_clock, "title" to R.string.status_chapter, "battery" to R.string.status_battery, "left" to R.string.status_pages_left, "page" to R.string.status_page, "percent" to R.string.status_percent))
+                FilterChip(key in status, { status = if (key in status) status - key else status + key; shelf.status = status; onChange(status) }, { Text(stringResource(label)) })
+        }
     }
 }
 
@@ -334,11 +342,11 @@ private fun span(seconds: Long) = if (seconds >= 3600) stringResource(R.string.t
  * The library, as e-reader apps lay one out: a bar with search, sort and view, and settings; the book being read
  * in a card under it; then every book on the phone. One row of chips narrows it to a reading list, and its "Browse"
  * chip groups it by author, series, collection or folder. Holding a book (or its ⋮) opens its details.
- * [clock] is the time and battery shown in the bar. Rescans whenever [resumes] changes.
+ * [clock] is the time and battery shown in the bar; [onMonoMode] leaves for MonoMode itself, from this screen only. Rescans whenever [resumes] changes.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun Library(resumes: Int, clock: String, onSettings: () -> Unit, onOpen: (String) -> Unit) {
+internal fun Library(resumes: Int, clock: String, onMonoMode: () -> Unit, onSettings: () -> Unit, onOpen: (String) -> Unit) {
     val ctx = LocalContext.current
     val shelf = remember { Records.shelf(ctx) }
     val access = remember(resumes) { Environment.isExternalStorageManager() }
@@ -390,7 +398,7 @@ internal fun Library(resumes: Int, clock: String, onSettings: () -> Unit, onOpen
                 LaunchedEffect(Unit) { focus.requestFocus() }
                 IconButton({ searching = false; query = "" }) { Icon(Icons.Filled.Close, stringResource(R.string.close_search)) }
             } else {
-                Text(stringResource(R.string.library), Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(R.string.library), Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(clock, Modifier.padding(end = 8.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (!list.isNullOrEmpty()) {
                     IconButton({ searching = true }) { Icon(Icons.Filled.Search, stringResource(R.string.search_books)) }
@@ -410,6 +418,8 @@ internal fun Library(resumes: Int, clock: String, onSettings: () -> Unit, onOpen
                         }
                     }
                 }
+                // MonoMode's own mark: the way out of the mode, or to change it
+                IconButton(onMonoMode) { Icon(painterResource(R.drawable.ic_launcher_monochrome), stringResource(R.string.open_monomode), Modifier.size(40.dp)) }
                 IconButton(onSettings) { Icon(Icons.Outlined.Settings, stringResource(R.string.settings)) }
             }
         }
@@ -811,6 +821,7 @@ internal fun Reading(path: String, onScreen: () -> Unit, onClose: () -> Unit) {
     var footnote by remember { mutableStateOf<Triple<String, Int, String?>?>(null) }
     var speaking by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf(shelf.status) }
+    var infoLine by remember { mutableStateOf(shelf.infoLine) }
     val voice = remember { arrayOfNulls<TextToSpeech>(1) }
     val density = ctx.resources.displayMetrics.density
 
@@ -956,8 +967,8 @@ internal fun Reading(path: String, onScreen: () -> Unit, onClose: () -> Unit) {
     Box(Modifier.fillMaxSize().background(paper).windowInsetsPadding(WindowInsets.systemBarsIgnoringVisibility.union(WindowInsets.displayCutout))) {
         Column {
             AndroidView({ web }, Modifier.weight(1f).fillMaxWidth())
-            // the quiet line every e-reader keeps at the foot of the page
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            // the quiet line every e-reader keeps at the foot of the page, unless switched off
+            if (infoLine) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 // clock and battery, refreshed twice a minute while they are shown
                 val tick by produceState(0, status) { while ("clock" in status || "battery" in status) { delay(30_000); value++ } }
                 val left = listOfNotNull(
@@ -1107,7 +1118,7 @@ internal fun Reading(path: String, onScreen: () -> Unit, onClose: () -> Unit) {
             }
             Column(Modifier.verticalScroll(rememberScrollState()).padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (tab == 0) TextOptions(look, ::restyle)
-                else { PageTurning(look, ::restyle); TapOptions(shelf); StatusOptions(shelf) { status = it } }
+                else { PageTurning(look, ::restyle); TapOptions(shelf); StatusOptions(shelf, { infoLine = it }) { status = it } }
             }
         }
     }
