@@ -113,6 +113,8 @@
     <string name="swipe_up_from_the_bottom">swipe up from the bottom of the screen and hold</string>
     <string name="touch_and_hold_back_and">touch and hold Back and Recents together</string>
     <string name="done">Done</string>
+    <string name="install">Install</string>
+    <string name="install_1x">Install %1$s</string>
     <string name="choose_a_mode_to_set_it_up">Choose a mode to set it up.</string>
     <string name="monomode_reader">MonoMode reader</string>
     <string name="library">Library</string>

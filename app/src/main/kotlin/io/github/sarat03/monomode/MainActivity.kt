@@ -137,6 +137,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installed = modes.installed
         Appearance.load(this)
         // colour runs under the status and navigation bars, as on the home screen; content keeps clear with safeDrawingPadding
         enableEdgeToEdge()
@@ -154,6 +155,8 @@ class MainActivity : ComponentActivity() {
 
     /** Set by "Enter e-reader": open the reader as soon as the mode is on. */
     private var entering = false
+    /** Modes the user installed; the others show on Home with Install until then. */
+    private var installed by mutableStateOf(emptySet<Profile>())
 
     /** All files access, reread on return from its Settings page. */
     private var allFiles by mutableStateOf(false)
@@ -388,7 +391,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.weight(1f).clickable { openMode = p; tab = Page.MODES }) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Icon(p.icon, null, Modifier.size(28.dp))
-                        Text(if (p == on) getString(R.string.on) else getString(R.string.off), style = MaterialTheme.typography.headlineMedium)
+                        Text(getString(if (p == on) R.string.on else if (p in installed) R.string.off else R.string.install), style = MaterialTheme.typography.headlineMedium)
                         Text(p.label, style = MaterialTheme.typography.titleMedium)
                         Text(p.what, style = MaterialTheme.typography.bodySmall)
                     }
@@ -618,6 +621,13 @@ class MainActivity : ComponentActivity() {
         val on = ps.activeMode
         val name = profile.label
         val off = remember(profile) { mutableStateListOf(*modes.off(profile).toTypedArray()) }
+        // not installed yet: the page only offers to install it; its options and apps come after
+        if (profile !in installed) {
+            Hero(neutralTone(), profile.icon, getString(R.string.install_1x, name), profile.what) {
+                Button({ modes.install(profile); installed = modes.installed }) { Text(getString(R.string.install)) }
+            }
+            return
+        }
         Hero(
             if (on == profile) safeTone() else neutralTone(), profile.icon,
             if (on == profile) getString(R.string.s_1x_is_on, name) else getString(R.string.s_1x_is_off, name),
@@ -638,6 +648,7 @@ class MainActivity : ComponentActivity() {
                 // Kiosk is one step: settings, then its app pinned, then Wireless debugging off
                 if (profile == Profile.KIOSK) kioskApp?.let { (component, label) -> ph.turnOnKiosk(component, label) } else ph.turnOn(profile)
             }, enabled = ps.busy == null && on == null && (profile != Profile.KIOSK || kioskApp != null)) { Text(getString(if (profile == Profile.E_READER) R.string.enter_e_reader else R.string.turn_on)) }
+            if (on != profile) TextButton({ modes.uninstall(profile); installed = modes.installed; openMode = null; tab = Page.HOME }, enabled = ps.busy == null) { Text(getString(R.string.uninstall), color = t.fg) }
         }
         // straight into the reader once the mode is on, as switching on an e-reader does; named directly, so it also works with "Own home screen" off
         LaunchedEffect(on) {

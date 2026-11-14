@@ -31,6 +31,20 @@ class ModesTest {
 
     @Test fun `nothing is on at first`() = assertNull(modes.active)
 
+    @Test fun `no mode is installed at first, install and uninstall show and hide one`() {
+        assertEquals(emptySet(), modes.installed)
+        modes.install(Profile.E_READER)
+        assertEquals(setOf(Profile.E_READER), modes.installed)
+        modes.uninstall(Profile.E_READER)
+        assertEquals(emptySet(), modes.installed)
+    }
+
+    @Test fun `the mode that is on counts as installed and cannot be uninstalled`() {
+        modes.turnOn(sh, Profile.KIOSK) // on from before this update, never installed
+        assertEquals(setOf(Profile.KIOSK), modes.installed)
+        assertFailsWith<IllegalStateException> { modes.uninstall(Profile.KIOSK) }
+    }
+
     @Test fun `turning on skips the options switched off and marks the mode active`() {
         modes.setOff(Profile.E_READER, setOf("Battery saver"))
         modes.turnOn(sh, Profile.E_READER)

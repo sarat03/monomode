@@ -22,6 +22,15 @@ class Modes(private val dir: File, private val store: Store) {
 
     val active: Profile? get() = Profile.entries.firstOrNull { record(it).exists() }
 
+    /** Modes the user installed from mode options; MonoMode starts as a launcher alone. The mode that is on always counts, so an update never hides it. */
+    val installed: Set<Profile> get() = Profile.entries.filter { it.name in store.strings("installed") || it == active }.toSet()
+    fun install(p: Profile) = store.putStrings("installed", store.strings("installed") + p.name)
+    /** Hides the mode again; its choices are kept for a later install. */
+    fun uninstall(p: Profile) {
+        check(active != p) { "turn ${p.name.lowercase()} mode off first" }
+        store.putStrings("installed", store.strings("installed") - p.name)
+    }
+
     /** Options the user switched off; they can change only while the mode is off, as the record holds what was applied. */
     fun off(p: Profile) = store.strings("off.${p.name}")
     fun setOff(p: Profile, options: Set<String>) = store.putStrings("off.${p.name}", options)
