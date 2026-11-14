@@ -25,16 +25,20 @@ Disturb through Android's own APIs, where it may), and `ProfileTest.FakeSettings
 in tests. `PhoneSettingsTest` covers the fallback; Kiosk's unpin is a step `Modes.turnOff` takes, run
 only while something is pinned. Restore records keep their `ns key value` lines.
 
-## 3. Screen state out of MainActivity's companion object (next)
+## 3. MainActivity's pages, one file each (done, first half)
 
-Twelve `mutableStateOf` values in a `companion object` are shared by every page, and each page is a
-private composable in one file. Move each page into its own file with an explicit state holder:
+`MainActivity.kt` was one 800-line file. Each page is now its own file, as an extension of `MainActivity`:
+`MainScreen.kt` (navigation, rail, two-pane), `HomeTab.kt`, `ModePage.kt`, `CheckTab.kt`, `CleanupTab.kt`,
+`SettingsPage.kt`, `PairScreen.kt`, and `Widgets.kt` (Hero, Note, ListRow, ListDialog, AppIcon). The
+activity keeps its lifecycle, the `Phone`, and the shared screen state in its companion object; members the
+pages use are `internal` (app module only). Nothing a user sees changed: the 18 `androidTest` UI tests
+pass on the emulator, and every page was checked on the phone and tablet emulators.
 
-- `HomeTab`, `ModePage`, `CheckTab`, `CleanupTab`, `SettingsPage`, `PairScreen`.
-- One `MainScreenState` (tab, open mode, cleaner filter, selections) passed down, so pages are
-  previewable and Compose-testable (`KioskHomeTest`/`AllAppsTest` show the pattern).
-- No behaviour change; check with the existing `androidTest` suite on the emulator only
-  (it wipes app data — never on the user's phone).
+**Second half (when a page gets its own Compose test):** move that page from "extension of MainActivity"
+to plain parameters (state in, callbacks out), so it can be previewed and tested without the activity.
+Do it page by page, starting with `ModePage`, whose decisions already live in `engine/Needs.kt`. The
+companion object's state then becomes one `MainScreenState` passed down. Done all at once, it would
+rewrite every page for no visible gain.
 
 ## 4. Reader.kt
 
