@@ -3,10 +3,33 @@ package io.github.sarat03.monomode
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.ActivityNotFoundException
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
+import android.view.KeyEvent
+import android.view.View
+import android.view.WindowManager
+import android.content.pm.ActivityInfo
+import android.net.Uri
+import androidx.compose.foundation.Image
 import android.os.BatteryManager
 import android.os.Bundle
+import android.os.Environment
+import android.system.Os
+import android.os.StrictMode
+import android.webkit.MimeTypeMap
+import androidx.compose.ui.layout.ContentScale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import monomode.engine.BOOK_TYPES
+import monomode.engine.Book
+import monomode.engine.BUILT_IN_READER
+import monomode.engine.KOREADER
+import monomode.engine.koreaderBook
+import java.io.File
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import androidx.activity.ComponentActivity
@@ -34,7 +57,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import android.widget.Toast
 import android.provider.Settings
 import android.os.UserHandle
-import android.net.Uri
 import android.content.pm.LauncherApps
 import androidx.activity.compose.BackHandler
 import androidx.activity.addCallback
@@ -77,6 +99,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -95,11 +118,15 @@ import monomode.engine.Profile
 import java.text.DateFormat
 import java.util.Date
 
-/** The home screen: the everyday launcher, or the e-reader's own home while that mode is on (Kiosk pins one app instead). */
+/** Set on the intent that opens [HomeActivity] on the reader's library, as when E-reader is switched on. */
+const val EXTRA_LIBRARY = "library"
+
+/** The home screen: the everyday launcher, and the e-reader's library, which opens like an app (Kiosk pins its chosen app instead). */
 class HomeActivity : ComponentActivity() {
 
     private var apps by mutableStateOf<List<App>>(emptyList())
     private var mode by mutableStateOf<Profile?>(null)
+    /** The reading app chosen instead of MonoMode's own reader; null while its own reader is used. */
     private var reader by mutableStateOf<App?>(null)
     /** Every app, name only, for the plain launcher shown when no mode is on. */
     private var everyApp by mutableStateOf<List<Pair<String, String>>>(emptyList())
@@ -111,6 +138,16 @@ class HomeActivity : ComponentActivity() {
     /** Read on every return to home, so the warning goes as soon as MonoMode turns it off. */
     private var wirelessOn by mutableStateOf(false)
     private val pins by lazy { getSharedPreferences("launcher", MODE_PRIVATE) }
+    /** KOReader's last book and its cover, reread on every return to this screen; null for other reading apps or without All files access. */
+    private var book by mutableStateOf<Book?>(null)
+    private var cover by mutableStateOf<ImageBitmap?>(null)
+    private var resumes by mutableStateOf(0)
+    /** The book open in MonoMode's reader, shown in place of the library; null for the library. */
+    private var reading by mutableStateOf<String?>(null)
+    /** The reader's Settings screen is showing, in place of the library. */
+    private var settings by mutableStateOf(false)
+    /** The reader opened like an app (E-reader switched on); Home and Back go back to the launcher. */
+    private var library by mutableStateOf(false)
     private var now by mutableStateOf(Date())
     private var batteryLevel by mutableStateOf(-1)
 
@@ -119,20 +156,29 @@ class HomeActivity : ComponentActivity() {
         Appearance.load(this)
         // draw under the status and navigation bars and the camera cutout, so the screen colour runs to the edges; the content keeps clear with safeDrawingPadding
         enableEdgeToEdge()
-        // a home screen ignores Back; finishing would reveal the phone's usual launcher underneath
-        onBackPressedDispatcher.addCallback(this) {}
+        reading = bookFrom(intent)
+        library = intent.getBooleanExtra(EXTRA_LIBRARY, false)
+        // a home screen never finishes on Back (that would reveal the phone's usual launcher underneath); Back from the library goes to the launcher
+        onBackPressedDispatcher.addCallback(this) { if (library) { library = false; reload() } }
+        // KOReader opens a book from a file:// link and reads the file with its own storage access, so nothing is
+        // shared through the link; Android's default policy would crash this app for sending one
+        StrictMode.setVmPolicy(StrictMode.VmPolicy.LAX)
         setContent {
             // wake at each new minute, so the clock never lags the status bar's
             LaunchedEffect(Unit) { while (true) { now = Date(); batteryLevel = battery(); delay(60_000 - System.currentTimeMillis() % 60_000) } }
-            when (mode) {
-                null -> AllApps(
-                    everyApp, pinned, showAll, homeTaps, now, { open(it) }, ::togglePin, { showAll = it }, { openMonoMode() },
-                    wirelessOn = wirelessOn,
-                    onAppInfo = { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", it, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
-                    onUninstall = { startActivity(Intent(Intent.ACTION_DELETE, Uri.fromParts("package", it, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
-                )
-                else -> Reader() // the e-reader is the only mode with a home screen of its own
+            LaunchedEffect(resumes, reader?.pkg) {
+                val found = if (reader?.pkg == KOREADER && Environment.isExternalStorageManager()) withContext(Dispatchers.IO) { koreaderBook(Environment.getExternalStorageDirectory()) } else null
+                if (found?.path != book?.path) cover = found?.let { withContext(Dispatchers.IO) { loadCover(it.path) } }
+                book = found
             }
+            // the reader is an app, not a home screen: shown when opened (E-reader switched on, or a book handed over with "Open with"), else the launcher
+            if (reading != null || library) { if (reading != null || reader == null) ReaderHome() else Reader() }
+            else AllApps(
+                everyApp, pinned, showAll, homeTaps, now, { open(it) }, ::togglePin, { showAll = it }, { openMonoMode() },
+                wirelessOn = wirelessOn,
+                onAppInfo = { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", it, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
+                onUninstall = { startActivity(Intent(Intent.ACTION_DELETE, Uri.fromParts("package", it, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) },
+            )
         }
         // full screen, after setContent (the window has no decor before it on Android 11): the home screens draw their own clock; a swipe from the top shows the bars briefly
         window.insetsController?.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -158,6 +204,11 @@ class HomeActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        val handed = bookFrom(intent)
+        if (handed != null) { reading = handed; return }
+        // Home leaves the reader like any app; E-reader switched on opens its library
+        library = intent.getBooleanExtra(EXTRA_LIBRARY, false)
+        reading = null; settings = false
         // Home on home: back to the top of the pinned apps with search cleared, as launchers do
         showAll = false
         homeTaps++
@@ -175,10 +226,10 @@ class HomeActivity : ComponentActivity() {
 
     private fun reload() {
         val modes = Records.modes(this)
-        // only a mode with "Own home screen" switched on takes over home (Kiosk has none), even when MonoMode is the everyday launcher
-        mode = modes.active?.takeIf { OWN_HOME in it.options && OWN_HOME !in modes.off(it) }
-        // a mode's home screen is full screen and draws its own clock; the everyday launcher keeps the status bar and its notifications
-        window.insetsController?.run { if (mode == null) show(WindowInsets.Type.statusBars()) else hide(WindowInsets.Type.statusBars()) }
+        // no mode takes over home: the launcher stays, and the e-reader's library opens like an app
+        mode = modes.active
+        // the reader is full screen and draws its own clock; the everyday launcher keeps the status bar and its notifications
+        window.insetsController?.run { if (reading == null && !library) show(WindowInsets.Type.statusBars()) else hide(WindowInsets.Type.statusBars()) }
         batteryLevel = battery()
         wirelessOn = Session.isWirelessDebuggingOn(this)
         val picked = mode?.let { modes.apps(it) }.orEmpty()
@@ -187,10 +238,68 @@ class HomeActivity : ComponentActivity() {
         val readerPkg = modes.reader(all.map { it.first })
         reader = all.firstOrNull { it.first == readerPkg }?.let(::app)
         // the everyday launcher lists MonoMode like any app; the kiosk picker and cleaner, which share launcherApps, must not
-        everyApp = if (mode == null) (all + (packageName to getString(R.string.app_name))).sortedBy { it.second.lowercase() } else emptyList()
+        everyApp = (all + (packageName to getString(R.string.app_name))).sortedBy { it.second.lowercase() }
         pinned = pins.getStringSet("pinned", emptySet())!!.toSet()
-        apps = if (mode == null) emptyList() else all.filter { it.first in picked && it.first != readerPkg }.map(::app)
+        apps = all.filter { it.first in picked && it.first != readerPkg }.map(::app)
+        resumes++
+        applyScreen()
     }
+
+    // the volume keys turn the page while a book is open, as the buttons of an e-reader do
+    private fun turnsPage(key: Int) = (key == KeyEvent.KEYCODE_VOLUME_DOWN || key == KeyEvent.KEYCODE_VOLUME_UP) && reading != null && pageTurner != null && Records.shelf(this).volumeKeys
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean =
+        if (turnsPage(keyCode)) { pageTurner?.invoke(keyCode == KeyEvent.KEYCODE_VOLUME_DOWN); true } else super.onKeyDown(keyCode, event)
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean = turnsPage(keyCode) || super.onKeyUp(keyCode, event) // or the phone still beeps
+
+    /**
+     * The file of a book another app asks to have opened ("Open with"), or null for any other intent.
+     * A file:// link names it. A content:// link does not, but with All files access the real file can be read
+     * all the same once its path is known, and the open descriptor tells; failing that, the book is copied in.
+     */
+    private fun bookFrom(intent: Intent): String? {
+        val uri = intent.data?.takeIf { intent.action == Intent.ACTION_VIEW } ?: return null
+        if (uri.scheme == "file") return uri.path
+        return try {
+            contentResolver.openFileDescriptor(uri, "r")?.use { fd -> Os.readlink("/proc/self/fd/${fd.fd}").takeIf { File(it).canRead() } }
+                // shortcut: a copy is another file to the reader, so its place is kept apart from the original's
+                ?: File(cacheDir, "opened-${uri.toString().hashCode()}.${kind(uri)}").also { copy -> contentResolver.openInputStream(uri)!!.use { from -> copy.outputStream().use { from.copyTo(it) } } }.path
+        } catch (e: Exception) { null } // no longer there, or not ours to read: nothing to open
+    }
+
+    /** The kind of book behind a content:// link, as a file extension: from its name when that tells, else from its type. */
+    private fun kind(uri: Uri): String {
+        val type = contentResolver.getType(uri).orEmpty()
+        return listOfNotNull(uri.lastPathSegment?.substringAfterLast('.', ""), MimeTypeMap.getSingleton().getExtensionFromMimeType(type)).map { it.lowercase() }.firstOrNull { it in BOOK_TYPES }
+            ?: when { "fictionbook" in type -> "fb2"; "comicbook" in type || "cbz" in type -> "cbz"; else -> "epub" }
+    }
+
+    /**
+     * The reader's own choices about the screen, applied to this window only and only for MonoMode's own reader:
+     * grey (drawn through a filter that removes all colour; the phone-wide grey is the mode's own option),
+     * brightness, orientation, and staying on while a book is open.
+     */
+    private fun applyScreen() {
+        val shelf = Records.shelf(this)
+        val own = reading != null || (library && reader == null)
+        val grey = own && !shelf.colour
+        window.decorView.setLayerType(if (grey) View.LAYER_TYPE_HARDWARE else View.LAYER_TYPE_NONE, if (grey) Paint().apply { colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setSaturation(0f) }) } else null)
+        window.attributes = window.attributes.apply { screenBrightness = (if (own) shelf.brightness else null) ?: WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
+        if (own && reading != null && shelf.keepOn) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        requestedOrientation = when (if (own) shelf.orientation else "auto") {
+            "portrait" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            "landscape" -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
+
+    /** Opens [b] in KOReader at the page it was left on; KOReader alone if it turns the book down. */
+    private fun open(b: Book) = try {
+        startActivity(
+            Intent(Intent.ACTION_VIEW).setPackage(KOREADER).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                // KOReader's filter wants a type; octet-stream is on its list for suffixes Android does not know
+                .setDataAndType(Uri.fromFile(File(b.path)), MimeTypeMap.getSingleton().getMimeTypeFromExtension(File(b.path).extension.lowercase()) ?: "application/octet-stream")
+        )
+    } catch (e: ActivityNotFoundException) { open(KOREADER) }
 
     // each app in its own task, like any launcher: Home clears this screen's task, and anything started
     // inside it would be closed too (MonoMode's screen closing ends the session and turns off Wireless debugging)
@@ -211,7 +320,29 @@ class HomeActivity : ComponentActivity() {
     private fun battery(): Int =
         registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
 
-    /** Kindle/Kobo style: paper white, black serif text, no colour or motion, so it suits the grayscale screen. */
+    /**
+     * E-reader with MonoMode's own reader: the home screen is the library itself, as on a Kindle or Kobo, with no
+     * launcher in between. Under the books: the other apps chosen for the mode, and the way back to MonoMode.
+     * A book opens in place, on this same screen: a separate screen would start with Android's app-opening animation.
+     */
+    @Composable
+    private fun ReaderHome() = AppTheme {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            val path = reading
+            // unless the library is open there is nothing behind a book that was handed over: closing it leaves
+            if (path != null) key(path) { Reading(path, ::applyScreen) { reading = null; resumes++; applyScreen(); if (!library) finish() } }
+            // the other apps live in Settings, not under the books, where a growing library would push them out of reach; MonoMode is in the library's bar
+            else if (settings) ReaderSettings(::applyScreen, { settings = false }) {
+                if (apps.isNotEmpty()) Text(getString(R.string.other_apps), Modifier.padding(top = 12.dp).semantics { heading() }, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                for (a in apps) Text(a.label, Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { open(a.pkg) }.padding(vertical = 12.dp), style = MaterialTheme.typography.bodyLarge)
+            }
+            else Box(Modifier.safeDrawingPadding()) {
+                Library(resumes, DateFormat.getTimeInstance(DateFormat.SHORT).format(now) + "  ·  $batteryLevel%", ::openMonoMode, { settings = true }) { reading = it; applyScreen() }
+            }
+        }
+    }
+
+    /** With another reading app chosen, the screen behind it. Kindle/Kobo style: paper white, black serif text, no colour or motion, so it suits the grayscale screen. */
     @Composable
     private fun Reader() {
         val dark = isDark()
@@ -228,16 +359,18 @@ class HomeActivity : ComponentActivity() {
             HorizontalDivider(Modifier.padding(vertical = 8.dp), color = ink)
             Text(DateFormat.getDateInstance(DateFormat.FULL).format(now), color = ink, fontFamily = serif, fontSize = 18.sp)
             Spacer(Modifier.height(40.dp))
-            if (main == null) Text(getString(R.string.no_reading_app_found_install), color = ink, fontFamily = serif, fontSize = 20.sp)
-            else Row(
-                Modifier.fillMaxWidth().border(2.dp, ink).clickable { open(main.pkg) }.padding(20.dp),
+            if (main != null) Row(
+                Modifier.fillMaxWidth().border(2.dp, ink).clickable { book?.let { open(it) } ?: open(main.pkg) }.padding(20.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically,
             ) {
-                // a book outline, like the cover slot on a Kobo or Kindle home screen
-                Box(Modifier.size(56.dp, 80.dp).border(1.5.dp, ink))
+                val b = book
+                // the book's cover, else an outline, like the cover slot on a Kobo or Kindle home screen
+                cover?.let { Image(it, null, Modifier.size(56.dp, 80.dp).border(1.5.dp, ink), contentScale = ContentScale.Crop) }
+                    ?: Box(Modifier.size(56.dp, 80.dp).border(1.5.dp, ink))
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(getString(R.string.continue_reading), color = ink, fontFamily = serif, fontSize = 22.sp, maxLines = 1)
-                    Text(main.label, color = ink, fontFamily = serif, fontSize = 18.sp)
+                    if (b != null) Text(b.title, color = ink, fontFamily = serif, fontSize = 18.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(if (b?.percent != null) "${b.percent}% · ${main.label}" else main.label, color = ink, fontFamily = serif, fontSize = if (b != null) 15.sp else 18.sp)
                 }
             }
             Spacer(Modifier.height(32.dp))

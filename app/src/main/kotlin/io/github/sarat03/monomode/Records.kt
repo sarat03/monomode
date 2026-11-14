@@ -7,6 +7,7 @@ import android.provider.MediaStore
 import java.io.File
 import monomode.engine.Debloat
 import monomode.engine.Modes
+import monomode.engine.Shelf
 
 /** Restore records live in app storage; a copy goes to Downloads so it survives uninstalling the app. */
 object Records {
@@ -22,6 +23,13 @@ object Records {
         override fun putStrings(key: String, value: Set<String>) = prefs(key).edit().putStringSet(name(key), value).apply()
         override fun string(key: String) = prefs(key).getString(name(key), null)
         override fun putString(key: String, value: String) = prefs(key).edit().putString(name(key), value).apply()
+    })
+
+    /** What the built-in reader remembers, in its own SharedPreferences file. */
+    fun shelf(ctx: Context) = Shelf(object : Shelf.Store {
+        private val prefs = ctx.getSharedPreferences("shelf", Context.MODE_PRIVATE)
+        override fun get(key: String) = prefs.getString(key, null)
+        override fun put(key: String, value: String?) = prefs.edit().putString(key, value).apply()
     })
 
     /** Copies [record] to Downloads/MonoMode, one file overwritten each time (empty once everything is restored); no storage permission needed on Android 10+. */

@@ -20,6 +20,11 @@
          Play Store or a dialog: MonoMode grants it to itself once, over its own Wireless debugging connection. -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
 
+    <!-- E-reader mode: the built-in reader lists the EPUB books on shared storage, and "Show the current book"
+         reads KOReader's last book from its own files there. Off until the user allows it in Settings; read only,
+         nothing leaves the phone. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
@@ -34,10 +39,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- configChanges: turning the phone must not close the open book; the screens lay themselves out again -->
         <!-- home screen while a mode sets it with set-home-activity, or always if the user picks it as their launcher; launchMode keeps one copy; own affinity so
              MonoMode opened from it gets its own task, which Home does not clear (that ended the session) -->
         <activity
             android:name=".HomeActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:exported="true"
             android:launchMode="singleTask"
             android:taskAffinity="io.github.sarat03.monomode.home"
@@ -46,6 +53,21 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <!-- "Open with" for books, from a file manager or a download -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="file" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/epub+zip" />
+                <data android:mimeType="text/plain" />
+                <data android:mimeType="text/html" />
+                <data android:mimeType="application/x-fictionbook+xml" />
+                <data android:mimeType="application/x-fictionbook" />
+                <data android:mimeType="application/vnd.comicbook+zip" />
+                <data android:mimeType="application/x-cbz" />
+                <data android:mimeType="application/pdf" />
             </intent-filter>
         </activity>
         <receiver android:name=".Pairing$PairReceiver" android:exported="false" />
