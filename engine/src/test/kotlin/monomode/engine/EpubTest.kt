@@ -60,24 +60,24 @@ class EpubTest {
         assertEquals(1 to 1f, b.locate(1f))
     }
 
-    @Test fun `finds an EPUB 2 cover through the cover meta`() = assertContentEquals(byteArrayOf(1, 2, 3), epubCover(epub(
+    @Test fun `finds an EPUB 2 cover through the cover meta`() = assertContentEquals(byteArrayOf(1, 2, 3), bookCover(epub(
         "<package><metadata><meta content=\"cov\" name=\"cover\"/></metadata><manifest><item id=\"ch1\" href=\"a.xhtml\"/><item href=\"img/c.jpg\" id=\"cov\" media-type=\"image/jpeg\"/></manifest></package>")))
 
-    @Test fun `finds an EPUB 3 cover through the cover-image property`() = assertContentEquals(byteArrayOf(1, 2, 3), epubCover(epub(
+    @Test fun `finds an EPUB 3 cover through the cover-image property`() = assertContentEquals(byteArrayOf(1, 2, 3), bookCover(epub(
         "<package><manifest><item id=\"x\" properties=\"cover-image\" href=\"img/c.jpg\"/></manifest></package>")))
 
     @Test fun `no cover in the book, or not an EPUB, gives null`() {
-        assertNull(epubCover(epub("<package><manifest><item id=\"ch1\" href=\"a.xhtml\"/></manifest></package>")))
+        assertNull(bookCover(epub("<package><manifest><item id=\"ch1\" href=\"a.xhtml\"/></manifest></package>")))
         val text = File(dir, "plain.epub").apply { writeText("x") }
-        assertNull(epubCover(text))
+        assertNull(bookCover(text))
         assertFailsWith<IOException> { Epub(text) }
     }
 
     @Test fun `the library scan finds EPUBs but not in hidden or Android folders`() {
         val found = epub(two, name = "lib/Books/Deep/one.EPUB")
         epub(two, name = "lib/.trash/two.epub"); epub(two, name = "lib/Android/data/three.epub")
-        File(dir, "lib/Books/notes.txt").writeText("x")
-        assertEquals(listOf(found), findEpubs(File(dir, "lib")))
+        File(dir, "lib/Books/notes.docx").writeText("x")
+        assertEquals(listOf(found), findBooks(File(dir, "lib")))
     }
 
     private fun chapter(body: String) = "<html><head><title>albatross in the title</title></head><body>$body</body></html>"

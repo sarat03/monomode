@@ -127,7 +127,7 @@
     <string name="reader_needs_file_access">To list the books on this phone, MonoMode needs All files access. It only reads them; nothing leaves the phone.</string>
     <string name="allow_file_access">Allow file access</string>
     <string name="looking_for_books">Looking for books…</string>
-    <string name="no_books_found">No EPUB books found. Copy some to the Books or Download folder.</string>
+    <string name="no_books_found">No books found. Copy some to the Books or Download folder.</string>
     <string name="cant_open_book">This book cannot be opened.</string>
     <string name="new_book">New</string>
     <string name="contents">Contents</string>
@@ -186,6 +186,7 @@
     <string name="back_to_s">Back to %1$s</string>
     <string name="go_to">Go to…</string>
     <string name="go">Go</string>
+    <string name="page_1_to_d">Page (1–%1$d)</string>
     <string name="percent_0_100">Percent (0–100)</string>
     <string name="page_turning">Page turning</string>
     <string name="pages">Pages</string>

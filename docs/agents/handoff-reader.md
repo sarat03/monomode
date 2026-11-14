@@ -1,13 +1,13 @@
 # Handoff: MonoMode's built-in e-reader
 
-Written 2026-11-11 at the end of Phase 4. Read this first, then `git log master..HEAD`.
+Written 2026-11-11 at the end of Phase 4, updated 2026-11-13 at the end of Phase 5. Read this first, then `git log master..HEAD`.
 
 ## Where things stand
 
-- **Branch:** `claude/kiosk-mode-wireless-debugging-4613ab`, six commits ahead of `master`, **not pushed**, no PR.
+- **Branch:** `claude/kiosk-mode-wireless-debugging-4613ab`, eight commits ahead of `master`, **not pushed**, no PR.
   It lives in the worktree `.claude/worktrees/kiosk-mode-wireless-debugging-4613ab`.
-- **Working tree:** clean. 110 engine tests pass. `:app:assembleDebug` builds.
-- **Done:** Phases 0 to 4 of the plan below. **Left:** Phase 5, and the review items at the end.
+- **Working tree:** clean. 129 engine tests pass. `:app:assembleDebug` builds.
+- **Done:** all of the plan below, Phases 0 to 5. **Left:** the review items at the end.
 
 ## What was built
 
@@ -18,7 +18,9 @@ book opens in place on the same screen. The mode's button says "Enter e-reader" 
 |---|---|
 | `app/.../Reader.kt` | `Library`, `Reading`, `ReaderSettings`, `BookDetails`, the page script `SCRIPT`, `css()` |
 | `app/.../HomeActivity.kt` | `ReaderHome()` (library / book / settings), `applyScreen()`, volume keys, `bookFrom()` for "Open with" |
-| `engine/.../Epub.kt` | EPUB parsing: title, author, series, description, spine, contents, cover, `search`, `note`, `progress`/`locate` |
+| `engine/.../BookFile.kt` | `BookFile`, what the reading page and library see of any book (`search`, `note`, `progress`/`locate` live here); `openBook`, `findBooks`, `bookCover`; the TXT, HTML, FB2 and CBZ readers |
+| `engine/.../Epub.kt` | EPUB parsing, one `BookFile`: title, author, series, description, spine, contents, cover |
+| `app/.../Pdf.kt` | `PdfReading`, the PDF page view (Android's `PdfRenderer`), and `pdfCover` |
 | `engine/.../Shelf.kt` | Everything the reader remembers, behind `Shelf.Store` (SharedPreferences file `shelf` on the phone) |
 | `engine/.../Catalog.kt` | `BookInfo`, `onList`, `groups`, `members` |
 | `engine/.../Tap.kt` | `tapZone()` |
@@ -51,23 +53,21 @@ The user chose features from a ReadEra/KOReader comparison. Numbers are from tha
 | 2 | Bookmarks (1), go to / back (2), text options (7), brightness (10), keep on + orientation (11), volume keys (12), status line (14) | done `5d325d3` |
 | 3 | Search (3), highlights + notes (4), scroll mode (6), tap layouts (13), footnote popups (15), read aloud (16) | done `2d2b9b8` |
 | 4 | Lists (17), cover grid (18), book details (19), authors/series/collections (20), folders (21), statistics (22), Open with (26) | done `9926c15` |
-| **5** | **TXT, HTML, FB2, CBZ (24), then PDF (23)** | **not started** |
+| 5 | TXT, HTML, FB2, CBZ (24), then PDF (23) | done, the commit after `a5c1582` |
 
 Left out on purpose by the user: dictionary lookup (5), own font files (8), extra themes (9), MOBI/DOCX/DJVU
 (25), sync (27). No KOReader code is copied: MonoMode is MIT, KOReader is AGPL.
 
-### Suggested shape for Phase 5
+### How Phase 5 was built
 
-Not started and not agreed in detail, so treat as a proposal:
-
-1. Pull an interface out of `Epub` (title, author, spine, `bytes`, `mediaType`, contents, cover, search…)
-   and make `Epub` one implementation. `Reading` and `Library` only need that interface.
-2. TXT and HTML: a one-chapter book whose single entry is the file wrapped in minimal XHTML.
-3. FB2: XML to chapters (one per `<section>`), cover from the base64 `<binary>`.
-4. CBZ: a zip of images; one "chapter" per image, served as a page with the image.
-5. PDF last, and separately: Android's `PdfRenderer`, pages as bitmaps. It does not fit the WebView page
-   model, so it likely needs its own small page view. Highlights, search and text options will not apply.
-6. `findEpubs` and the manifest's "Open with" filter must learn the new types.
+- `BookFile` (named so because `Book` is already KOReader's last-book record) was pulled out of `Epub`.
+  `openBook(file)` picks the reader by extension; `BOOK_TYPES` lists them.
+- TXT, HTML and FB2 become chapters of HTML held in memory, made the first time a chapter is asked for, so the
+  library scan reads only a file's first 64 KB. TXT is cut into chapters of about 60 000 characters.
+- FB2: one chapter per top-level `<section>`, then one for the notes so note links open as footnote popups.
+- CBZ: one chapter per picture; the page carries `class="comic"`, which `css()` uses to give it the whole screen.
+- PDF is not HTML: `openBook` gives it a title and no chapters, and `Reading` hands it to `PdfReading`. Its place
+  is saved with the page number as the "chapter".
 
 ## How the work is done here
 
@@ -94,12 +94,14 @@ export ANDROID_HOME=~/Library/Android/sdk
 
 **Emulator.** AVD `tab34` (tablet, 2560x1600). KOReader v2026.07.1 is installed on it. Test books are on it:
 `/sdcard/Download/Voyage.epub` (3 chapters, contents, an in-text link, a footnote, a blocked script, the word
-"albatross" once), `/sdcard/Books/Test Book.epub`, `/sdcard/Books/Calm Seas.epub`.
+"albatross" once), `/sdcard/Books/Test Book.epub`, `/sdcard/Books/Calm Seas.epub`, and one generated book per other format in
+`/sdcard/Books/formats/` (Sailor Notes.txt, Saved Page.html, Deep Blue.fb2, Space Cat.cbz, Ship Manual.pdf).
 
 - **Never run the connected (instrumented) tests on the user's phone: they wipe app data.** Ask first.
 - The mode page needs a paired Wireless-debugging session, which the emulator does not give. To see the
   E-reader home without it, fake the mode: `adb shell run-as io.github.sarat03.monomode touch files/mode-E_READER.txt`,
   then `adb shell am start -n io.github.sarat03.monomode/.HomeActivity`. Remove the file afterwards.
+- `vis` often prints `none` on its first call after a book opens; call it again a second later.
 - `tools/reader-ui.sh` has the helpers used for the scripted runs: `ui` (texts on screen), `tap "<text>"`,
   `vis` (which paragraphs of the test book are on the page), `top`.
 - The emulator is left with MonoMode as its home screen and grayscale on, from an older real mode test whose
@@ -136,3 +138,13 @@ Tell the user about these rather than assume they are fine.
 - **MonoMode now declares All files access** (`MANAGE_EXTERNAL_STORAGE`). The manifest comment and ADR 0002
   call `QUERY_ALL_PACKAGES` "the one broad permission"; that wording is out of date and the ADR is not updated.
   Google Play restricts this permission.
+- **Phase 5 formats** were tested only with small generated files, on the tablet emulator. No real-world TXT,
+  FB2, comic or PDF was opened; a large PDF or a comic with big scans was not timed.
+- **PDF and comics** have no zoom, search, highlights or read aloud, and a PDF has no bookmarks. A PDF page stays
+  white in the dark theme. Password-protected PDFs do not open.
+- **Every .txt and .html file** in the scanned folders now shows in the library, book or not (KOReader's own
+  quickstart page does on the emulator).
+- **HTML** shows no pictures or styles kept in files beside it. **FB2** tables come out as running text, and
+  `.fb2.zip` is not read. **TXT** in an old encoding other than Latin-1 comes out garbled.
+- **"Open with"** for the new types was not exercised from another app. File managers that send FB2 or CBZ as
+  `application/octet-stream` will not offer MonoMode.

@@ -23,6 +23,7 @@ import android.webkit.MimeTypeMap
 import androidx.compose.ui.layout.ContentScale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import monomode.engine.BOOK_TYPES
 import monomode.engine.Book
 import monomode.engine.BUILT_IN_READER
 import monomode.engine.KOREADER
@@ -192,8 +193,15 @@ class HomeActivity : ComponentActivity() {
         return try {
             contentResolver.openFileDescriptor(uri, "r")?.use { fd -> Os.readlink("/proc/self/fd/${fd.fd}").takeIf { File(it).canRead() } }
                 // shortcut: a copy is another file to the reader, so its place is kept apart from the original's
-                ?: File(cacheDir, "opened-${uri.toString().hashCode()}.epub").also { copy -> contentResolver.openInputStream(uri)!!.use { from -> copy.outputStream().use { from.copyTo(it) } } }.path
+                ?: File(cacheDir, "opened-${uri.toString().hashCode()}.${kind(uri)}").also { copy -> contentResolver.openInputStream(uri)!!.use { from -> copy.outputStream().use { from.copyTo(it) } } }.path
         } catch (e: Exception) { null } // no longer there, or not ours to read: nothing to open
+    }
+
+    /** The kind of book behind a content:// link, as a file extension: from its name when that tells, else from its type. */
+    private fun kind(uri: Uri): String {
+        val type = contentResolver.getType(uri).orEmpty()
+        return listOfNotNull(uri.lastPathSegment?.substringAfterLast('.', ""), MimeTypeMap.getSingleton().getExtensionFromMimeType(type)).map { it.lowercase() }.firstOrNull { it in BOOK_TYPES }
+            ?: when { "fictionbook" in type -> "fb2"; "comicbook" in type || "cbz" in type -> "cbz"; else -> "epub" }
     }
 
     /**

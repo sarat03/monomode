@@ -121,7 +121,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import monomode.engine.BookInfo
-import monomode.engine.Epub
+import monomode.engine.openBook
 import monomode.engine.groups
 import monomode.engine.members
 import monomode.engine.onList
@@ -138,8 +138,8 @@ import monomode.engine.Look
 import monomode.engine.Shelf
 import java.text.DateFormat
 import java.util.Date
-import monomode.engine.epubCover
-import monomode.engine.findEpubs
+import monomode.engine.bookCover
+import monomode.engine.findBooks
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
@@ -148,7 +148,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** A book's cover, scaled down for a thumbnail; null when it has none. Reads the file: call off the main thread. */
-internal fun loadCover(path: String): ImageBitmap? = epubCover(File(path))?.let { bytes ->
+internal fun loadCover(path: String): ImageBitmap? = if (path.endsWith(".pdf", ignoreCase = true)) pdfCover(path) else bookCover(File(path))?.let { bytes ->
     // covers are often print size; a thumbnail needs a fraction of that
     val size = BitmapFactory.Options().apply { inJustDecodeBounds = true }.also { BitmapFactory.decodeByteArray(bytes, 0, bytes.size, it) }
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = maxOf(1, size.outHeight / 400) })?.asImageBitmap()
@@ -290,8 +290,8 @@ internal fun Library(resumes: Int, onOpen: (String) -> Unit) {
     // shortcut: rescans on every return; fine for hundreds of books, cache the list if a library gets slow
     LaunchedEffect(resumes, changed) {
         if (access) books = withContext(Dispatchers.IO) {
-            findEpubs(root).mapNotNull { f ->
-                try { Epub(f).use { BookInfo(f.path, it.title, it.author, it.series, it.seriesIndex, shelf.favourite(f.path), shelf.status(f.path), shelf.collectionsOf(f.path), shelf.place(f.path)) } } catch (e: IOException) { null }
+            findBooks(root).mapNotNull { f ->
+                try { openBook(f).use { BookInfo(f.path, it.title, it.author, it.series, it.seriesIndex, shelf.favourite(f.path), shelf.status(f.path), shelf.collectionsOf(f.path), shelf.place(f.path)) } } catch (e: IOException) { null }
             }
         }
     }
@@ -465,7 +465,7 @@ private fun BookDetails(b: BookInfo, shelf: Shelf, onOpen: (String) -> Unit, onC
     val ctx = LocalContext.current
     val file = File(b.path)
     val cover by produceState<ImageBitmap?>(null, b.path) { value = withContext(Dispatchers.IO) { loadCover(b.path) } }
-    val description by produceState("", b.path) { value = withContext(Dispatchers.IO) { try { Epub(file).use { it.description } } catch (e: IOException) { "" } } }
+    val description by produceState("", b.path) { value = withContext(Dispatchers.IO) { try { openBook(file).use { it.description } } catch (e: IOException) { "" } } }
     var favourite by remember { mutableStateOf(b.favourite) }
     var status by remember { mutableStateOf(b.status) }
     var names by remember { mutableStateOf(shelf.collections()) }
@@ -630,25 +630,28 @@ private fun css(l: Look, w: Float, h: Float): String {
         // a book's own colours are made for white paper
         (if (l.theme != "day") "body *{color:inherit !important;background-color:transparent !important}" else "a{color:inherit !important}") +
         "::highlight(quote){background-color:rgba(255,213,79,0.55)}::highlight(find){background-color:rgba(255,145,0,0.7)}" +
-        "img,svg,video{max-width:100% !important;max-height:${h - 60}px !important;height:auto;break-inside:avoid}</style>"
+        "img,svg,video{max-width:100% !important;max-height:${h - 60}px !important;height:auto;break-inside:avoid}" +
+        // a comic's page is its picture alone: the whole screen, not a column of text with margins
+        "html body.comic{padding:0 !important;height:${h}px !important;column-width:auto !important}html body.comic img{max-height:${h}px !important;display:block;margin:0 auto}</style>"
 }
 
 /**
  * The reading page, as e-reader apps do it: the text alone, in real pages. Tap the right or left third (or
  * swipe) to turn the page; tap the middle for the bars with contents, the slider and the text settings.
- * One chapter at a time is shown in a WebView, straight from the EPUB's zip, with the network off and the book's
- * own scripts blocked, so a book cannot run code or reach the internet; only [SCRIPT] runs. shortcut: EPUB only.
+ * One chapter at a time is shown in a WebView, straight from the book's file, with the network off and the book's
+ * own scripts blocked, so a book cannot run code or reach the internet; only [SCRIPT] runs. A PDF goes to [PdfReading].
  */
 @SuppressLint("ClickableViewAccessibility") // taps are a shortcut; the bars offer the same moves as buttons
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun Reading(path: String, onScreen: () -> Unit, onClose: () -> Unit) {
+    if (path.endsWith(".pdf", ignoreCase = true)) { PdfReading(path, onClose); return } // drawn pages, not text: its own page view
     val ctx = LocalContext.current
     val shelf = remember { Records.shelf(ctx) }
     var bars by remember { mutableStateOf(false) }
     BackHandler { if (bars) bars = false else onClose() }
-    // shortcut: opened on the main thread; it reads only the zip's index and the small package file
-    val book = remember { try { Epub(File(path)).takeIf { it.spine.isNotEmpty() } } catch (e: IOException) { null } }
+    // shortcut: opened on the main thread; it reads only the zip's index and the small package file, or the first 64 KB of other kinds
+    val book = remember { try { openBook(File(path)).takeIf { it.spine.isNotEmpty() } } catch (e: IOException) { null } }
     if (book == null) { Text(stringResource(R.string.cant_open_book), Modifier.safeDrawingPadding().padding(16.dp)); return }
 
     val dark = isDark()
