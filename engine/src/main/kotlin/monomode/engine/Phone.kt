@@ -176,6 +176,8 @@ class Phone(
     }
 
     fun dismiss() = update { copy(message = null) }
+    /** Shows or leaves the one-time setup; an action that needs it before then shows it by itself. */
+    fun askSetup() = update { copy(needsSetup = true) }
     fun cancelSetup() = update { copy(needsSetup = false) }
 
     private fun drop() { link = null; update { copy(connected = false, results = null, scan = null) } }

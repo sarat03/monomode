@@ -95,6 +95,10 @@ import monomode.engine.KOREADER
 import monomode.engine.Level
 import monomode.engine.Method
 import monomode.engine.Profile
+import monomode.engine.Allowed
+import monomode.engine.Need
+import monomode.engine.firstAsk
+import monomode.engine.need
 import monomode.engine.Risk
 import monomode.engine.parseList
 import monomode.engine.Phone
@@ -164,6 +168,7 @@ class MainActivity : ComponentActivity() {
     private var setUp by mutableStateOf(false)
     /** Android's Do Not Disturb access, which Mute notifications uses. Reread on return from its Settings page. */
     private var dnd by mutableStateOf(false)
+    private val allowed get() = Allowed(setUp, dnd)
 
     override fun onResume() {
         super.onResume()
@@ -626,10 +631,11 @@ class MainActivity : ComponentActivity() {
                 kioskApp?.let { (component, label) -> OutlinedButton({ ph.pin(component, label) }, enabled = ps.busy == null) { Text(getString(R.string.pin_again), color = t.fg) } }
             }
             else Button({
-                // Mute needs Do Not Disturb access; ask for it unless the one-time setup is due first anyway (it covers Mute too)
-                val chosen = profile.options.keys.filter { it !in off }
-                val setupDue = !setUp && (profile == Profile.KIOSK || chosen.any { !profile.mutes(it) })
-                if (!dnd && !setupDue && chosen.any { profile.mutes(it) }) return@Button askDnd()
+                when (profile.firstAsk(off.toSet(), allowed)) {
+                    Need.SETUP_ONCE -> return@Button ph.askSetup()
+                    Need.DND_ACCESS -> return@Button askDnd()
+                    null -> Unit
+                }
                 entering = profile == Profile.E_READER
                 // Kiosk is one step: settings, then its app pinned, then Wireless debugging off
                 if (profile == Profile.KIOSK) kioskApp?.let { (component, label) -> ph.turnOnKiosk(component, label) } else ph.turnOn(profile)
@@ -650,8 +656,11 @@ class MainActivity : ComponentActivity() {
                     Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
                         Text(option, style = MaterialTheme.typography.bodyLarge)
                         // what the option needs first, until it is done; tapping the Do Not Disturb line opens that permission
-                        if (profile.mutes(option)) { if (!dnd) NeedLine(getString(R.string.needs_dnd_access_once), ::askDnd) }
-                        else if (!setUp) NeedLine(getString(R.string.needs_wireless_debugging_once))
+                        when (profile.need(option, allowed)) {
+                            Need.SETUP_ONCE -> NeedLine(getString(R.string.needs_wireless_debugging_once))
+                            Need.DND_ACCESS -> NeedLine(getString(R.string.needs_dnd_access_once), ::askDnd)
+                            null -> Unit
+                        }
                     }
                     // drawn enabled even while locked: a disabled "on" switch looks off; the row itself ignores taps then
                     Switch(option !in off, null)
