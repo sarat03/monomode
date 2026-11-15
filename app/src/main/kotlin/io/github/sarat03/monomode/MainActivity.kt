@@ -49,6 +49,8 @@ class MainActivity : ComponentActivity() {
         var cleanFilter by mutableStateOf(0)
     }
 
+    /** First launch after install: the intro runs before anything else. */
+    private var intro by mutableStateOf(false)
     internal val modes by lazy { Records.modes(applicationContext) }
     /** Process-wide, like the state above: an open session must survive the activity being recreated (battery saver turns on dark theme). */
     internal val ph: Phone get() = phone ?: applicationContext.let { app ->
@@ -64,10 +66,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         installed = modes.installed
         Appearance.load(this)
+        intro = !onboarded()
         // colour runs under the status and navigation bars, as on the home screen; content keeps clear with safeDrawingPadding
         enableEdgeToEdge()
         openPage(intent)
-        setContent { AppTheme { Surface(Modifier.fillMaxSize()) { Screen() } } }
+        setContent { AppTheme { Surface(Modifier.fillMaxSize()) { if (intro) Onboarding { intro = false } else Screen() } } }
     }
 
     override fun onNewIntent(intent: Intent) {
