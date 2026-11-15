@@ -79,7 +79,7 @@ class Epub(val file: File) : BookFile() {
         return File(File(from).parentFile, path).normalize().invariantSeparatorsPath + if ('#' in href) "#" + href.substringAfter('#') else ""
     }
 
-    override fun bytes(entry: String): ByteArray? = zip.getEntry(entry)?.let { zip.getInputStream(it).use { s -> s.readBytes() } }
+    override fun bytes(entry: String): ByteArray? = zip.getEntry(entry)?.let { zip.getInputStream(it).use { s -> s.readCapped() } }
 
     /** The type the book declares for [entry], e.g. application/xhtml+xml; null for a file outside the manifest. */
     override fun mediaType(entry: String): String? = items.values.firstOrNull { it.first == entry }?.second?.ifEmpty { null }

@@ -19,6 +19,7 @@ class EngineTest {
 
         override fun run(args: List<String>): String {
             calls += args
+            commandLine(args) // what production sends: the allow-list holds for every flow tested here
             if (args.take(2) == listOf("pm", "disable-user") && args.last() == "com.vendor.locked")
                 throw java.io.IOException("pm exited 255: java.lang.IllegalArgumentException: Cannot disable a protected package")
             return when {
@@ -141,7 +142,16 @@ class EngineTest {
         assertEquals("pm disable-user --user 0 com.a.b", commandLine(listOf("pm", "disable-user", "--user", "0", "com.a.b")))
 
     @Test fun `commandLine refuses anything sh would interpret`() {
-        for (bad in listOf("a b", "a;b", "\$(id)", "`id`", "a|b", "a>b", "a&b", "'a'", "\"a\"", "a\nb", "*", "~", "")) assertFailsWith<IllegalArgumentException>(bad) { commandLine(listOf("echo", bad)) }
+        for (bad in listOf("a b", "a;b", "\$(id)", "`id`", "a|b", "a>b", "a&b", "'a'", "\"a\"", "a\nb", "*", "~", "")) assertFailsWith<IllegalArgumentException>(bad) { commandLine(listOf("pm", "enable", bad)) }
+    }
+
+    @Test fun `commandLine refuses any command outside the allow-list`() {
+        for (bad in listOf(listOf("rm", "-rf", "/sdcard"), listOf("reboot"), listOf("pm", "clear", "com.a.b"), listOf("pm", "install", "x.apk"),
+            listOf("cmd", "package", "uninstall", "com.a.b"), listOf("cat", "/data/system/users/0.xml"), listOf("cat", "/proc/net/tcp", "/etc/hosts"),
+            listOf("settings"), listOf("am", "force-stop", "com.a.b"), emptyList()))
+            assertFailsWith<IllegalArgumentException>(bad.toString()) { commandLine(bad) }
+        for (ok in listOf(listOf("pm", "list", "packages", "-s"), listOf("settings", "put", "global", "zen_mode", "1"), listOf("cat", "/proc/net/tcp6"), listOf("am", "task", "lock", "stop")))
+            commandLine(ok)
     }
 
     @Test fun `other apps are the enabled ones not in the list and not protected`() {

@@ -14,6 +14,7 @@ class ProfileTest {
         val calls = mutableListOf<List<String>>()
         override fun run(args: List<String>): String {
             calls += args
+            commandLine(args) // what production sends: the allow-list holds for every mode tested here
             return when {
                 args.take(2) == listOf("settings", "get") -> (values["${args[2]} ${args[3]}"] ?: "null") + "\n"
                 args.take(2) == listOf("settings", "put") -> {

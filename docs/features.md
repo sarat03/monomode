@@ -18,11 +18,11 @@ Template for a new section:
 
 ---
 
-## Own ADB client and pairing (2026-10-22)
+## Own ADB client and pairing (2026-10-22, last changed 2026-11-14)
 **What:** MonoMode pairs with and talks to the phone's own adbd over Wireless debugging. No computer, no root.
 **Where:** `adb/` (message codec, connection, `pairing/`: SPAKE2, AES-GCM peer info), `app/tls/` (Conscrypt TLS transports), `Session.kt`, `Pairing.kt`, `PairReceiver.kt` (code typed into a notification), `Mdns.kt`.
-**Decisions:** own client, Conscrypt bundled for the TLS key exporter on Android 11, own Ed25519 point math, not constant-time (ADR 0001). Android 11 minimum (ADR 0003). The pairing handshake times out so a stalled one cannot hang the notification.
-**Tested by:** `adb` unit tests against BoringSSL known-answer vectors and a scripted adbd; `RealAdbd*Test` against a real adbd on API 30-35 emulators (`.github/workflows/emulator.yml`).
+**Decisions:** own client, Conscrypt bundled for the TLS key exporter on Android 11, own Ed25519 point math, not constant-time (ADR 0001). Android 11 minimum (ADR 0003). The pairing handshake times out so a stalled one cannot hang the notification. `commandLine` refuses any command outside the list in `SECURITY.md`; CI fails on network code outside `Session.kt` and `tls/` (ADR 0002).
+**Tested by:** `EngineTest` (allow-list; the test fakes send every command through it), `adb` unit tests against BoringSSL known-answer vectors and a scripted adbd; `RealAdbd*Test` against a real adbd on API 30-35 emulators (`.github/workflows/emulator.yml`).
 **Open:** real pairing on an emulator needs a live dialog, so CI skips that one test.
 
 ## Network & access (2026-10-22)
@@ -61,11 +61,11 @@ Template for a new section:
 **Where:** `HomeActivity.kt`.
 **Tested by:** `AllAppsTest` and `LauncherAccessibilityTest` (in `HomeTest.kt`) on a device.
 
-## Built-in reader (2026-11-11 to 2026-11-13)
+## Built-in reader (2026-11-11 to 2026-11-13, last changed 2026-11-14)
 **What:** E-reader mode's home screen is a library; books open in place. EPUB, TXT, HTML, FB2, CBZ and PDF; bookmarks, highlights with notes, search, read aloud, reading lists and statistics.
 **Where:** `Reader.kt`, `Pdf.kt`; `engine/BookFile.kt`, `Epub.kt`, `Catalog.kt`, `Shelf.kt`, `Tap.kt`, `KoReader.kt`.
-**Decisions:** what the reader remembers lives in the engine behind a `Store`. Formats share one `BookFile` interface. Full history in `docs/agents/handoff-reader.md`.
-**Tested by:** `EpubTest`, `BookFileTest`, `ShelfTest`, `CatalogTest`, `TapTest`; the page view and PDF by scripted emulator runs only.
+**Decisions:** what the reader remembers lives in the engine behind a `Store`. Formats share one `BookFile` interface. Books are untrusted: chapters, pages, whole-file books and "Open with" copies stop at `MAX_BOOK_BYTES` (64 MB). Full history in `docs/agents/handoff-reader.md`.
+**Tested by:** `EpubTest`, `BookFileTest` (including the size cap), `ShelfTest`, `CatalogTest`, `TapTest`; the page view and PDF by scripted emulator runs only.
 **Open:** `Reader.kt` (about 1,100 lines) is to be split (`docs/architecture-plan.md` §4); review items at the end of the handoff.
 
 ## Release (2026-11-05, #15)
