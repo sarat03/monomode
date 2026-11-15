@@ -11,7 +11,7 @@
 
     <!-- App names in Clean up and the kiosk picker. A debloater must see every app, so this is the
          one broad permission; nothing leaves the phone (ADR 0002). -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
 
     <!-- Uninstall from the launcher's app menu; Android still asks the user to confirm. -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
