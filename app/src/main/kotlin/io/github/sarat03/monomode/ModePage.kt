@@ -70,7 +70,7 @@ internal fun MainActivity.ModePage(profile: Profile) {
         else if (on != null) getString(R.string.turn_off_1x_first_one, on.label) else profile.what,
     ) {
         val t = if (on == profile) safeTone() else neutralTone()
-        val kioskApp = pinApp
+        val kioskApp = pinApp?.let { kioskApp() } // read again: the app may have been uninstalled since it was chosen
         if (on == profile) {
             Button({
                 ph.turnOff()
