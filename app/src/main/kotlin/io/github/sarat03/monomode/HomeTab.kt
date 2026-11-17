@@ -78,7 +78,7 @@ internal fun MainActivity.HomeTab() {
         HomeRow(AppIcons.Broom, getString(R.string.app_cleaner), if (ps.removed.isEmpty()) getString(R.string.remove_bloatware_and_unused_apps) else getString(R.string.s_1x_removed_or_disabled, ps.removed.size), getString(R.string.uses_wireless_debugging_each_time)) { tab = Page.CLEAN }
     }
     val w = warnTone()
-    Card(colors = CardDefaults.cardColors(w.bg, w.fg), modifier = Modifier.fillMaxWidth()) {
+    if (ps.wirelessOn) Card(colors = CardDefaults.cardColors(w.bg, w.fg), modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Outlined.Warning, null)
             Text(getString(R.string.wireless_debugging_is_on), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)

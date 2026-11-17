@@ -7,6 +7,7 @@ import android.app.NotificationManager.INTERRUPTION_FILTER_ALL
 import android.app.NotificationManager.INTERRUPTION_FILTER_NONE
 import android.app.NotificationManager.INTERRUPTION_FILTER_PRIORITY
 import android.content.Context
+import android.os.Build
 import android.provider.Settings
 import monomode.engine.Change
 import monomode.engine.DND
@@ -38,7 +39,8 @@ class AppSettings(private val ctx: Context) : PhoneSettings {
             DND -> nm.isNotificationPolicyAccessGranted && DND_NAMES.entries.firstOrNull { it.value == value }?.let { nm.setInterruptionFilter(it.key); true } == true
             "secure" -> Session.canSwitch(ctx) && Settings.Secure.putString(cr, c.key, v)
             "global" -> Session.canSwitch(ctx) && Settings.Global.putString(cr, c.key, v)
-            "system" -> Session.canSwitch(ctx) && Settings.System.putString(cr, c.key, v)
+            // refused (SecurityException, or IllegalArgumentException for an unknown key) and the key is absent: a vendor key this phone lacks (realme's saver one), nothing to set
+            "system" -> Session.canSwitch(ctx) && try { Settings.System.putString(cr, c.key, v) } catch (e: RuntimeException) { Settings.System.getString(cr, c.key) == null && Build.MANUFACTURER.lowercase() !in OPPO_FAMILY }
             else -> false
         }
     } ?: false
@@ -47,6 +49,8 @@ class AppSettings(private val ctx: Context) : PhoneSettings {
     private fun <T> here(f: () -> T): T? = try { f() } catch (e: Exception) { null }
 
     private companion object {
+        // the key is theirs, and they refuse it to apps: the shell must write it even when it is unset
+        val OPPO_FAMILY = setOf("realme", "oppo", "oneplus")
         val DND_NAMES = mapOf(INTERRUPTION_FILTER_ALL to "off", INTERRUPTION_FILTER_PRIORITY to "priority", INTERRUPTION_FILTER_NONE to "on", INTERRUPTION_FILTER_ALARMS to "alarms")
     }
 }
