@@ -38,7 +38,8 @@ class AppSettings(private val ctx: Context) : PhoneSettings {
             DND -> nm.isNotificationPolicyAccessGranted && DND_NAMES.entries.firstOrNull { it.value == value }?.let { nm.setInterruptionFilter(it.key); true } == true
             "secure" -> Session.canSwitch(ctx) && Settings.Secure.putString(cr, c.key, v)
             "global" -> Session.canSwitch(ctx) && Settings.Global.putString(cr, c.key, v)
-            "system" -> Session.canSwitch(ctx) && Settings.System.putString(cr, c.key, v)
+            // refused (no WRITE_SETTINGS) and the key is absent: a vendor key this phone lacks (realme's saver one), nothing to set
+            "system" -> Session.canSwitch(ctx) && try { Settings.System.putString(cr, c.key, v) } catch (e: SecurityException) { Settings.System.getString(cr, c.key) == null }
             else -> false
         }
     } ?: false

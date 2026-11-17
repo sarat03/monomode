@@ -54,6 +54,8 @@ internal fun MainActivity.ModePage(profile: Profile) {
     val on = ps.activeMode
     val name = profile.label
     val off = remember(profile) { mutableStateListOf(*modes.off(profile).toTypedArray()) }
+    // held here, not in the picker, so choosing an app enables "Turn on" at once
+    var pinApp by remember(profile) { mutableStateOf(if (profile == Profile.KIOSK) kioskApp() else null) }
     // not installed yet: the page only offers to install it; its options and apps come after
     if (profile !in installed) {
         Hero(neutralTone(), profile.icon, getString(R.string.install_1x, name), profile.what) {
@@ -68,7 +70,7 @@ internal fun MainActivity.ModePage(profile: Profile) {
         else if (on != null) getString(R.string.turn_off_1x_first_one, on.label) else profile.what,
     ) {
         val t = if (on == profile) safeTone() else neutralTone()
-        val kioskApp = if (profile == Profile.KIOSK) kioskApp() else null
+        val kioskApp = pinApp
         if (on == profile) {
             Button({
                 ph.turnOff()
@@ -119,7 +121,7 @@ internal fun MainActivity.ModePage(profile: Profile) {
     if (profile == Profile.KIOSK) {
         Section(getString(R.string.kiosk_app))
         NeedLine(getString(R.string.pinning_uses_wireless_debugging_each_time))
-        KioskAppPicker(askPin = "Ask for PIN to unpin" !in off)
+        KioskAppPicker(askPin = "Ask for PIN to unpin" !in off, chosen = pinApp) { pinApp = it }
     }
 }
 
@@ -172,9 +174,8 @@ internal fun MainActivity.kioskApp(): Pair<String, String>? = modes.apps(Profile
 
 /** Which app Kiosk pins; changeable only while Kiosk is off, like its other options. */
 @Composable
-internal fun MainActivity.KioskAppPicker(askPin: Boolean) {
+internal fun MainActivity.KioskAppPicker(askPin: Boolean, chosen: Pair<String, String>?, onChosen: (Pair<String, String>?) -> Unit) {
     var choose by remember { mutableStateOf(false) }
-    var chosen by remember { mutableStateOf(kioskApp()) }
     val kioskOff = ps.activeMode != Profile.KIOSK
     ListRow(getString(R.string.app_to_pin), chosen?.second ?: getString(R.string.choose_the_app_kiosk_pins)) { if (kioskOff) choose = true }
     // what pinning does, up front: people were surprised by the PIN prompt and by debugging being off afterwards
@@ -187,7 +188,7 @@ internal fun MainActivity.KioskAppPicker(askPin: Boolean) {
         ListDialog(getString(R.string.app_to_pin), null, { choose = false }, search = true) { q ->
             items(all.filter { it.matches(q) }, key = { it.first }) { (pkg, label) ->
                 Row(Modifier.fillMaxWidth().heightIn(min = 52.dp).selectable(pkg == chosen?.first?.substringBefore("/"), role = Role.RadioButton) {
-                    modes.setApps(Profile.KIOSK, setOf(pkg)); chosen = kioskApp(); choose = false
+                    modes.setApps(Profile.KIOSK, setOf(pkg)); onChosen(kioskApp()); choose = false
                 }, verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(pkg == chosen?.first?.substringBefore("/"), null); Spacer(Modifier.width(12.dp)); AppIcon(pkg); Text(label, Modifier.padding(start = 12.dp))
                 }
