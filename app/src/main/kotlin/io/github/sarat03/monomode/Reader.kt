@@ -893,15 +893,19 @@ internal fun Reading(path: String, onScreen: () -> Unit, onClose: () -> Unit) {
             // runs on a WebView thread; ZipFile is safe to share
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse {
                 val entry = request.url.path.orEmpty().removePrefix("/")
-                val bytes = (if (request.url.host == HOST) book.bytes(entry) else null) ?: return WebResourceResponse("text/plain", null, ByteArrayInputStream(ByteArray(0)))
+                // scripts are on for this app's own (run from outside the page); the header keeps every script of the book's blocked,
+                // on every response: an SVG or XML file opened as a document runs its own scripts too
+                val csp = mapOf("Content-Security-Policy" to "script-src 'none'; connect-src 'none'")
+                // a broken entry in an untrusted book must not crash the WebView thread
+                val bytes = (if (request.url.host == HOST) try { book.bytes(entry) } catch (e: Exception) { null } else null)
+                    ?: return WebResourceResponse("text/plain", null, 200, "OK", csp, ByteArrayInputStream(ByteArray(0)))
                 // the type the book declares: EPUB chapters are XHTML, which a browser misreads as plain HTML
                 val type = book.mediaType(entry) ?: URLConnection.guessContentTypeFromName(entry) ?: "application/octet-stream"
-                if ("html" !in type) return WebResourceResponse(type, null, ByteArrayInputStream(bytes))
+                if ("html" !in type) return WebResourceResponse(type, null, 200, "OK", csp, ByteArrayInputStream(bytes))
                 val text = bytes.decodeToString()
                 val head = Regex("</head>", RegexOption.IGNORE_CASE)
                 val styled = if (head.containsMatchIn(text)) text.replaceFirst(head, "${web.css}</head>") else text.replaceFirst(Regex("<body", RegexOption.IGNORE_CASE), "${web.css}<body")
-                // scripts are on for this app's own (run from outside the page); the header keeps every script of the book's blocked
-                return WebResourceResponse(type, "UTF-8", 200, "OK", mapOf("Content-Security-Policy" to "script-src 'none'"), ByteArrayInputStream(styled.toByteArray()))
+                return WebResourceResponse(type, "UTF-8", 200, "OK", csp, ByteArrayInputStream(styled.toByteArray()))
             }
             // a link in the text: follow it inside the book, never out of it
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {

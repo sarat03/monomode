@@ -49,7 +49,7 @@ class ProfileTest {
         assertEquals("1", sh.values["global low_power_sticky"]) // restored explicitly; turning low_power off leaves it set
         assertEquals("0", sh.values["system power_save_screenoff_time_state"]) // realme's saver would cut the screen timeout to 30s
         assertEquals("1", sh.values["global zen_mode"]) // priority: total silence leaves the ringer silent after restore (seen on Android 14)
-        restoreProfile(ShellSettings(sh), r)
+        restoreProfile(ShellSettings(sh), Profile.E_READER, r)
         assertEquals(start, sh.values) // release gate; unset ones deleted again
     }
 
@@ -59,7 +59,7 @@ class ProfileTest {
         assertEquals("1.0", sh.values["global window_animation_scale"])
         assertEquals("0", sh.values["global low_power"])
         assertEquals("1", sh.values["secure accessibility_display_daltonizer_enabled"])
-        restoreProfile(ShellSettings(sh), r)
+        restoreProfile(ShellSettings(sh), Profile.E_READER, r)
         assertEquals(start, sh.values)
     }
 
@@ -87,7 +87,7 @@ class ProfileTest {
         val sh = FakeSettings(start); val r = rec()
         applyProfile(ShellSettings(sh), Profile.KIOSK, r, off = setOf("Ask for PIN to unpin"))
         assertEquals("0", sh.values["secure lock_to_app_exit_locked"]) // Android's own default would still ask
-        restoreProfile(ShellSettings(sh), r)
+        restoreProfile(ShellSettings(sh), Profile.KIOSK, r)
         assertEquals(start, sh.values)
     }
 
@@ -97,14 +97,14 @@ class ProfileTest {
         assertEquals("7", sh.values["global stay_on_while_plugged_in"])
         assertEquals("1", sh.values["secure lock_to_app_enabled"])
         assertEquals("1", sh.values["global zen_mode"]) // priority: total silence leaves the ringer silent after restore (seen on Android 14)
-        restoreProfile(ShellSettings(sh), r)
+        restoreProfile(ShellSettings(sh), Profile.KIOSK, r)
         assertEquals(start, sh.values)
     }
 
     @Test fun `DND goes through the notification service, not the raw setting`() {
         val sh = FakeSettings(start + ("global zen_mode" to "3")); val r = rec()
         applyProfile(ShellSettings(sh), Profile.KIOSK, r)
-        restoreProfile(ShellSettings(sh), r)
+        restoreProfile(ShellSettings(sh), Profile.KIOSK, r)
         assertTrue(listOf("cmd", "notification", "set_dnd", "alarms") in sh.calls)
         assertTrue(sh.calls.none { it.take(4) == listOf("settings", "put", "global", "zen_mode") })
     }
@@ -132,7 +132,24 @@ class ProfileTest {
         assertFailsWith<java.net.SocketException> { applyProfile(ShellSettings(sh), Profile.E_READER, r) }
         assertEquals("1", fake.values["secure accessibility_display_daltonizer_enabled"]) // still changed
         assertTrue(r.exists())
-        restoreProfile(ShellSettings(fake), r) // connection back
+        restoreProfile(ShellSettings(fake), Profile.E_READER, r) // connection back
         assertEquals(start, fake.values)
+    }
+
+    @Test fun `a value with a line break is neither changed nor recorded, so it cannot forge a restore line`() {
+        val sh = FakeSettings(start + ("global window_animation_scale" to "1.0\nsecure install_non_market_apps 1")); val r = rec()
+        applyProfile(ShellSettings(sh), Profile.E_READER, r)
+        assertEquals("1.0\nsecure install_non_market_apps 1", sh.values["global window_animation_scale"])
+        assertTrue(r.readLines().none { "install_non_market_apps" in it })
+        restoreProfile(ShellSettings(sh), Profile.E_READER, r)
+        assertEquals(null, sh.values["secure install_non_market_apps"])
+    }
+
+    @Test fun `restore writes only the mode's own settings and an older version's launcher`() {
+        val sh = FakeSettings(start + ("home activity" to MODE_HOME) + ("global stay_on_while_plugged_in" to "7")); val r = rec()
+        r.writeText("global stay_on_while_plugged_in 1\nsecure install_non_market_apps 1\nhome activity com.oppo.launcher/.Launcher\nbroken\n")
+        restoreProfile(ShellSettings(sh), Profile.KIOSK, r)
+        assertEquals(start, sh.values)
+        assertTrue(!r.exists())
     }
 }

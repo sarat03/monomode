@@ -110,7 +110,8 @@ private fun PhoneSettings.set(c: Change, value: String) = check(write(c, value))
 fun applyProfile(s: PhoneSettings, profile: Profile, record: File, off: Set<String> = emptySet()) {
     check(!record.exists()) { "a profile is already applied; restore it first" }
     val chosen = profile.always + profile.options.filterKeys { it !in off }.values.flatten() + profile.whenOff.filterKeys { it in off }.values.flatten()
-    val previous = chosen.map { it to s.get(it) }
+    // a value with a line break would forge extra lines in the record: leave that setting alone, neither changed nor restored
+    val previous = chosen.map { it to s.get(it) }.filter { (_, v) -> '\n' !in v && '\r' !in v }
     record.parentFile?.mkdirs()
     val tmp = File(record.path + ".tmp")
     tmp.writeSynced(previous.joinToString("") { (c, v) -> "${c.ns} ${c.key} $v\n" })
@@ -127,12 +128,16 @@ fun applyProfile(s: PhoneSettings, profile: Profile, record: File, off: Set<Stri
     }
 }
 
-/** Puts back every value from [record], then deletes it. */
-fun restoreProfile(s: PhoneSettings, record: File) {
+/**
+ * Puts back every value from [record] for a setting [profile] changes, then deletes it. Lines for any other setting are
+ * skipped, so an edited record cannot write settings the mode never touched; the launcher an older version replaced still is.
+ */
+fun restoreProfile(s: PhoneSettings, profile: Profile, record: File) {
     if (!record.exists()) return
+    val own = (profile.changes + profile.whenOff.values.flatten()).map { it.ns to it.key }.toSet() + (HOME to "activity")
     for (line in record.readLines().filter { it.isNotBlank() }) {
-        val (ns, key, value) = line.split(" ", limit = 3)
-        s.set(Change(ns, key, value), value)
+        val (ns, key, value) = line.split(" ", limit = 3).takeIf { it.size == 3 } ?: continue
+        if (ns to key in own) s.set(Change(ns, key, value), value)
     }
     record.delete()
 }
