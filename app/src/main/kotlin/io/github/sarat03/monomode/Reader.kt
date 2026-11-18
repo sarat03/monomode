@@ -168,6 +168,7 @@ import java.io.File
 import java.io.IOException
 import java.net.URLConnection
 import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 /** A book's cover, scaled down for a thumbnail; null when it has none. Reads the file: call off the main thread. */
@@ -667,7 +668,7 @@ private fun BookDetails(b: BookInfo, shelf: Shelf, onOpen: (String) -> Unit, onC
 
 /**
  * Shows one chapter. In pages, it is laid out in screen-wide columns: a page is one screen of them, and turning a page
- * is a jump of one screen width. In [scroll], it is one long page moved with the finger, counted in steps of nine
+ * is a jump of one page's measured width ([advance]). In [scroll], it is one long page moved with the finger, counted in steps of nine
  * tenths of a screen so that "page 3 of 9" means something there too.
  */
 private class BookView(ctx: Context) : WebView(ctx) {
@@ -679,14 +680,22 @@ private class BookView(ctx: Context) : WebView(ctx) {
     /** Runs for "Highlight" in the menu that a long press on the text brings up. */
     var onHighlight: () -> Unit = {}
 
-    private val step get() = (if (scroll) height * 9 / 10 else width).coerceAtLeast(1)
+    /**
+     * The width of one page in device pixels, measured on the laid-out chapter. The WebView rounds its own width in CSS
+     * pixels up, so a page can be a pixel or two wider than the view: turning by the view's width would drift the text
+     * that much on every page. A fraction, so it never adds up; each page is rounded to whole pixels on its own.
+     */
+    var advance = 1f
+    /** The number of pages, counted by the page itself: the scroll range learns of the end mark (see MEASURE) only a while later. */
+    var count = 1
+    private val step get() = (height * 9 / 10).coerceAtLeast(1)
     private val last get() = (computeVerticalScrollRange() - height).coerceAtLeast(0)
-    val pages get() = if (scroll) (last + step - 1) / step + 1 else (computeHorizontalScrollRange().toFloat() / step).roundToInt().coerceAtLeast(1)
+    val pages get() = if (scroll) (last + step - 1) / step + 1 else count
     // at the very end the last step is a short one
-    val page get() = if (!scroll) scrollX / step else if (scrollY >= last) pages - 1 else (scrollY + step / 2) / step
-    fun show(page: Int) = page.coerceIn(0, pages - 1).let { if (scroll) scrollTo(0, it * step) else scrollTo(it * step, 0) }
+    val page get() = if (!scroll) (scrollX / advance).roundToInt() else if (scrollY >= last) pages - 1 else (scrollY + step / 2) / step
+    fun show(page: Int) = page.coerceIn(0, pages - 1).let { if (scroll) scrollTo(0, it * step) else scrollTo((it * advance).roundToInt(), 0) }
     /** The page that holds the point [xy] ("[x,y]" in the page's own pixels, from this app's script); null for anything else. */
-    fun pageAt(xy: String, density: Float): Int? = Regex("-?[0-9.]+").findAll(xy).map { it.value.toFloat() * density }.toList().takeIf { it.size == 2 }?.let { (x, y) -> ((if (scroll) y else x) / step).toInt() }
+    fun pageAt(xy: String, density: Float): Int? = Regex("-?[0-9.]+").findAll(xy).map { it.value.toFloat() * density }.toList().takeIf { it.size == 2 }?.let { (x, y) -> (if (scroll) y / step else x / advance).toInt() }
 
     // the system's own menu for selected text (Copy, Share…), with Highlight put first
     override fun startActionMode(callback: ActionMode.Callback, type: Int): ActionMode? = super.startActionMode(object : ActionMode.Callback2() {
@@ -754,6 +763,22 @@ window.mm = {
 };
 """
 
+/**
+ * Measures a laid-out chapter in pages: returns [the width of a page in device pixels (see BookView.advance), the number of pages]. The last
+ * column's right margin is not part of the scroll width, so the last page could not be scrolled to in full and would
+ * sit off-centre: a dot at the end of the last page makes room for it. A last page can be one column of two, and a
+ * full one lacks a margin (at most a tenth of it): a quarter of a page in between tells them apart.
+ */
+private const val MEASURE = """
+(function() {
+  var h = document.documentElement, w = h.getBoundingClientRect().width, n = Math.max(1, Math.ceil(h.scrollWidth / w - 0.25));
+  var end = document.createElement('mm-end');
+  end.style.cssText = 'position:absolute !important;top:0 !important;left:' + (n * w - 1) + 'px !important;width:1px !important;height:1px !important;display:block !important;background:inherit !important';
+  h.appendChild(end);
+  return [w * devicePixelRatio, n];
+})()
+"""
+
 /** Turns the page of the open book, forward or back; the activity calls it for the volume keys. Null while no book is open. */
 internal var pageTurner: ((Boolean) -> Unit)? = null
 
@@ -768,7 +793,8 @@ private fun css(l: Look, w: Float, h: Float): String {
     val (paper, ink) = PAPER.getValue(l.theme)
     // a wide screen shows two columns, like an open book: lines the full width of a tablet are too long to read
     val columns = if (w > 840) 2 else 1
-    val m = w / columns * l.margin / 100
+    // in whole layout units (1/64 px), so the gap is exactly two paddings and a column plus its gap is exactly the page's width
+    val m = (w / columns * l.margin / 100 * 64).roundToInt() / 64f
     val layout = if (l.scroll) "html{background:$paper !important}body{margin:0 !important;padding:24px ${m}px !important;width:auto !important;"
         else "html{height:${h}px !important;margin:0 !important;padding:0 !important;width:auto !important;max-width:none !important;background:$paper !important}" +
             // a book's own width, auto margins or offsets on the body would shift the columns off the page's centre; a column count (not a width) cannot round down to one column fewer
@@ -849,6 +875,7 @@ internal fun Reading(path: String, onScreen: () -> Unit, onClose: () -> Unit) {
         chapter = to; target = at; page = 0; pages = 0
         web.pending = if (anchor == null) at else null // an #anchor scrolls by itself
         web.scroll = look.scroll
+        web.advance = web.width.coerceAtLeast(1).toFloat(); web.count = 1 // until the new chapter is measured
         web.css = css(look, web.width / density, web.height / density)
         web.setBackgroundColor(android.graphics.Color.parseColor(PAPER.getValue(look.theme).first))
         web.loadUrl("https://$HOST/" + book.spine[to].split('/').joinToString("/") { Uri.encode(it) } + (anchor?.let { "#$it" } ?: ""))
@@ -933,15 +960,21 @@ internal fun Reading(path: String, onScreen: () -> Unit, onClose: () -> Unit) {
             // the number of pages is known only once the chapter has been drawn
             override fun onPageFinished(view: WebView, url: String) = web.postVisualStateCallback(0, object : WebView.VisualStateCallback() {
                 override fun onComplete(id: Long) {
-                    // the page that holds the place: rounding up instead would creep forward on every new layout
-                    // an #anchor scrolls only until its target is just in view at the right edge, mid-page: its page is the next whole one
-                    web.show(web.pending?.let { (it * web.pages + 0.001f).toInt() } ?: ((web.scrollX + web.width - 1) / web.width.coerceAtLeast(1)))
-                    web.pending = null
-                    page = web.page; pages = web.pages; save()
                     web.evaluateJavascript(SCRIPT, null)
-                    paint()
-                    locate?.let { js -> locate = null; web.evaluateJavascript(js) { at -> web.pageAt(at, density)?.let { web.show(it); page = web.page; save() } } }
-                    if (speaking) speakPage()
+                    web.evaluateJavascript(if (web.scroll) "0" else MEASURE) { w ->
+                        (JSONTokener(w).nextValue() as? JSONArray)?.takeIf { it.getDouble(0) >= 1 }?.let { web.advance = it.getDouble(0).toFloat(); web.count = it.getInt(1) }
+                        // the end mark has to be drawn before the last page can be scrolled to
+                        web.postVisualStateCallback(0, object : WebView.VisualStateCallback() { override fun onComplete(id: Long) {
+                            // the page that holds the place: rounding up instead would creep forward on every new layout
+                            // an #anchor scrolls only until its target is just in view at the right edge, mid-page: its page is the next whole one
+                            web.show(web.pending?.let { (it * web.pages + 0.001f).toInt() } ?: ceil(web.scrollX / web.advance - 0.01f).toInt())
+                            web.pending = null
+                            page = web.page; pages = web.pages; save()
+                            paint()
+                            locate?.let { js -> locate = null; web.evaluateJavascript(js) { at -> web.pageAt(at, density)?.let { web.show(it); page = web.page; save() } } }
+                            if (speaking) speakPage()
+                        } })
+                    }
                 }
             })
         }
