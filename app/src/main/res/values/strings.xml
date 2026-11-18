@@ -117,7 +117,7 @@
     <string name="needs_wireless_debugging_once">Needs Wireless debugging once, to set up</string>
     <string name="needs_dnd_access_once">Needs Do Not Disturb access, once. Tap to allow.</string>
     <string name="uses_wireless_debugging_each_time">Uses Wireless debugging for a moment each time; MonoMode turns it on and off.</string>
-    <string name="pinning_uses_wireless_debugging_each_time">Pinning uses Wireless debugging for a moment each time; MonoMode turns it on and off.</string>
+    <string name="pinning_uses_wireless_debugging_each_time">Pinning needs Wireless debugging, because Android only lets adb pin another app. Set it up once; then MonoMode turns it on for a moment each time and off again.</string>
     <string name="not_now">Not now</string>
     <string name="allow">Allow</string>
     <string name="install_1x">Install %1$s</string>
@@ -292,6 +292,9 @@
     <string name="kiosk_app">Kiosk app</string>
     <string name="choose_the_app_kiosk_pins">Choose the app Kiosk pins</string>
     <string name="pin_again">Pin again</string>
+    <string name="s_1x_is_on_not_pinned">%1$s is on, nothing pinned</string>
+    <string name="the_pin_ended_pin_again">The pin ended. Pin %1$s again, or turn Kiosk off to bring your settings back.</string>
+    <string name="cleaner_uses_wireless_debugging_to_change">Listing apps needs nothing; removing or disabling uses Wireless debugging for a moment, and MonoMode turns it on and off.</string>
     <string name="pinning_switches_off_wireless_debugging">Pinning also switches off Wireless debugging.</string>
     <string name="app_to_pin">App to pin</string>
 </resources>

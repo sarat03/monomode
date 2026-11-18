@@ -223,6 +223,19 @@ class PhoneTest {
         assertTrue("com.a" in p.state.scan!!.others)
     }
 
+    @Test fun `listing apps needs no Wireless debugging or setup when the app can list them itself`() {
+        var opened = 0
+        val p = Phone(
+            open = { opened++; link }, debloat = Debloat(File(dir, "d4.txt")), modes = Modes(dir, ModesTest.MapStore()),
+            wirelessOn = { false }, background = { it() }, lister = EngineTest.FakeShell(listOf("com.a", "com.b"), system = setOf("com.a")),
+        )
+        p.scan(emptyList(), "self")
+        assertEquals(listOf("com.a", "com.b"), p.state.scan?.others)
+        assertEquals(0, opened)
+        assertFalse(p.state.needsSetup)
+        assertNull(p.state.message)
+    }
+
     @Test fun `a refused disable gets the plain-words message, not just the command`() {
         val pm = EngineTest.FakeShell(listOf("com.vendor.locked"))
         val p = Phone(

@@ -63,6 +63,8 @@ class Phone(
     private val paired: () -> Boolean = { false },
     /** Switches Wireless debugging on without a link; false where the app does not hold the permission. */
     private val switchOn: () -> Boolean = { false },
+    /** Answers `pm list packages` from the app's own APIs, so listing apps needs no Wireless debugging; null: list over a link. */
+    private val lister: Shell? = null,
 ) {
     /** Thrown inside an action that needs Wireless debugging before the one-time setup. */
     private class NeedsSetup : Exception()
@@ -100,11 +102,14 @@ class Phone(
 
     fun check() = withLink("Checking…") { l -> val r = l.check(); update { copy(results = r) } }
 
-    /** Lists what can be removed: the curated [entries] and every other app but [self]. */
-    fun scan(entries: List<Entry>, self: String) = withLink("Reading the app list…") { l ->
-        this.self = self
-        val s = debloat.scan(l.shell, entries, self)
-        update { copy(scan = s, entries = entries) }
+    /** Lists what can be removed: the curated [entries] and every other app but [self]. Needs no Wireless debugging where [lister] reads the list. */
+    fun scan(entries: List<Entry>, self: String) {
+        val read = { sh: Shell ->
+            this.self = self
+            val s = debloat.scan(sh, entries, self)
+            update { copy(scan = s, entries = entries) }
+        }
+        if (lister != null) run("Reading the app list…") { read(lister) } else withLink("Reading the app list…") { l -> read(l.shell) }
     }
     private var self = ""
 
