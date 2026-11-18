@@ -47,7 +47,7 @@ dependencies {
     implementation(project(":adb"))
     implementation(project(":engine"))
     // TLS 1.3 with key export on Android 11; the OS API only arrives in Android 12 (ADR 0001).
-    implementation("org.conscrypt:conscrypt-android:2.7.0")
+    implementation("org.conscrypt:conscrypt-android:2.9.0")
 
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
     implementation("androidx.compose.material3:material3")
