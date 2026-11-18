@@ -9,7 +9,10 @@ import kotlin.test.assertFailsWith
 /** Connection against a scripted adbd; constants come from AOSP adb.h (A_VERSION, MAX_PAYLOAD, A_STLS_VERSION). */
 class AdbConnectionTest {
     internal class FakeAdbd(vararg replies: AdbMessage) : AdbTransport {
-        private val incoming = replies.fold(ByteArray(0)) { a, m -> a + m.encode() }
+        private val incoming get() = raw ?: replies
+        private val replies = replies.fold(ByteArray(0)) { a, m -> a + m.encode() }
+        /** Bytes sent instead of [replies], for malformed headers. */
+        var raw: ByteArray? = null
         private var pos = 0
         val sent = ByteArrayOutputStream()
         var tlsAt = -1
@@ -43,6 +46,22 @@ class AdbConnectionTest {
     fun `connect fails if adbd does not finish with CNXN`() {
         val adbd = FakeAdbd(AdbMessage(Command.STLS, 0x01000000, 0, ByteArray(0)), AdbMessage(Command.AUTH, 1, 0, ByteArray(20)))
         assertFailsWith<ProtocolException> { AdbConnection(adbd).connect() }
+    }
+
+    @Test
+    fun `connect fails if adbd replies CNXN without asking for TLS`() {
+        val adbd = FakeAdbd(AdbMessage(Command.CNXN, 0x01000001, 4096, "device::".toByteArray()))
+        assertFailsWith<ProtocolException> { AdbConnection(adbd).connect() }
+        assertEquals(-1, adbd.tlsAt)
+    }
+
+    @Test
+    fun `rejects a payload length over MAX_PAYLOAD or negative before reading it`() {
+        for (len in listOf(1024 * 1024 + 1, -1)) {
+            val header = AdbMessage(Command.STLS, 0x01000000, 0, ByteArray(0)).encode()
+            java.nio.ByteBuffer.wrap(header, 12, 4).order(java.nio.ByteOrder.LITTLE_ENDIAN).putInt(len)
+            assertFailsWith<ProtocolException> { AdbConnection(FakeAdbd().apply { raw = header }).connect() }
+        }
     }
 
     @Test

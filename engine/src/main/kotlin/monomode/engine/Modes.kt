@@ -53,6 +53,6 @@ class Modes(private val dir: File, private val store: Store) {
     fun turnOff(s: PhoneSettings, unpin: () -> Unit) {
         val p = active ?: return
         if (p == Profile.KIOSK) unpin()
-        restoreProfile(s, record(p))
+        restoreProfile(s, p, record(p))
     }
 }

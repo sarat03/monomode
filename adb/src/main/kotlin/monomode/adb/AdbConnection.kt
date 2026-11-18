@@ -16,10 +16,11 @@ class AdbConnection(private val transport: AdbTransport) {
 
     fun connect() {
         send(AdbMessage(Command.CNXN, A_VERSION, MAX_PAYLOAD, "host::".toByteArray()))
-        if (receive().command == Command.STLS) {
-            send(AdbMessage(Command.STLS, A_STLS_VERSION, 0, ByteArray(0)))
-            transport.startTls()
-        }
+        // Wireless debugging's connect port always asks for TLS (Android 11 onwards); anything else is not real adbd.
+        val first = receive()
+        if (first.command != Command.STLS) throw ProtocolException("expected STLS, got ${first.command}")
+        send(AdbMessage(Command.STLS, A_STLS_VERSION, 0, ByteArray(0)))
+        transport.startTls()
         val reply = receive()
         if (reply.command != Command.CNXN) throw ProtocolException("expected CNXN after TLS, got ${reply.command}")
     }
@@ -102,6 +103,7 @@ class AdbConnection(private val transport: AdbTransport) {
     private fun receive(): AdbMessage {
         val header = transport.readFully(AdbMessage.HEADER)
         val len = java.nio.ByteBuffer.wrap(header, 12, 4).order(java.nio.ByteOrder.LITTLE_ENDIAN).int
+        if (len !in 0..MAX_PAYLOAD) throw ProtocolException("payload length $len outside 0..$MAX_PAYLOAD")
         return AdbMessage.decode(header + transport.readFully(len))
     }
 

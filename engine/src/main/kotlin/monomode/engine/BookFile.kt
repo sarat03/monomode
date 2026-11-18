@@ -53,7 +53,8 @@ abstract class BookFile : Closeable {
     open fun cover(): ByteArray? = null
     /** How much [entry] counts towards the length of the book. */
     protected open fun size(entry: String): Long = bytes(entry)?.size?.toLong() ?: 0L
-    protected fun text(entry: String) = bytes(entry)?.decodeToString()
+    // a damaged entry (bad deflate data) reads as missing, so search and footnotes never crash the reader
+    protected fun text(entry: String) = try { bytes(entry)?.decodeToString() } catch (e: IOException) { null }
 
     /**
      * Every place [query] occurs, ignoring case, at most 200. The text searched is each chapter's body as the page's own
@@ -111,7 +112,7 @@ abstract class BookFile : Closeable {
 val BOOK_TYPES = setOf("epub", "txt", "html", "htm", "fb2", "cbz", "pdf")
 
 /** The book in [file], read the way its extension says. Throws IOException for a file that is not what it claims, or of no known kind. */
-fun openBook(file: File): BookFile = when (file.extension.lowercase()) {
+fun openBook(file: File): BookFile = try { when (file.extension.lowercase()) {
     "epub" -> Epub(file)
     "txt" -> Made(file.nameWithoutExtension) { txt(read(whole(file), markup = false)) }
     "html", "htm" -> html(file)
@@ -120,10 +121,10 @@ fun openBook(file: File): BookFile = when (file.extension.lowercase()) {
     // a PDF has no chapters of HTML: the phone draws its pages (PdfPages in the app), and only its name is known here
     "pdf" -> Made(file.nameWithoutExtension) { Parts(emptyList(), emptyMap()) }
     else -> throw IOException("not a book: ${file.name}")
-}
+} } catch (e: IOException) { throw e } catch (e: Exception) { throw IOException("unreadable book: ${file.name}", e) } // a malformed book must not crash the caller
 
 /** The cover picture of the book in [file], or null: it has none, or will not open. */
-fun bookCover(file: File): ByteArray? = try { openBook(file).use { it.cover() } } catch (e: IOException) { null }
+fun bookCover(file: File): ByteArray? = try { openBook(file).use { it.cover() } } catch (e: Exception) { null }
 
 /** Every book under [root], skipping hidden folders and Android's app folders. */
 fun findBooks(root: File): List<File> = root.walkTopDown().maxDepth(6)

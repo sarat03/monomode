@@ -12,8 +12,8 @@ private val ENTITIES = mapOf("amp" to "&", "lt" to "<", "gt" to ">", "quot" to "
 internal fun shown(xml: String) = xml.replace(Regex("<[^>]*>"), "")
     .replace(Regex("&(#x?[0-9a-fA-F]+|\\w+);")) { m ->
         val e = m.groupValues[1]
-        (if (e.startsWith("#x")) e.drop(2).toIntOrNull(16)?.let { String(Character.toChars(it)) }
-        else if (e.startsWith("#")) e.drop(1).toIntOrNull()?.let { String(Character.toChars(it)) }
+        (if (e.startsWith("#x")) e.drop(2).toIntOrNull(16)?.takeIf(Character::isValidCodePoint)?.let { String(Character.toChars(it)) }
+        else if (e.startsWith("#")) e.drop(1).toIntOrNull()?.takeIf(Character::isValidCodePoint)?.let { String(Character.toChars(it)) }
         else ENTITIES[e]) ?: m.value
     }
 /** Text of an XML element for showing in a list: as [shown], with whitespace collapsed. */
@@ -70,7 +70,7 @@ class Epub(val file: File) : BookFile() {
                 Regex("<navPoint.*?<text>(.*?)</text>.*?<content\\s[^>]*>", RegexOption.DOT_MATCHES_ALL).findAll(text(path).orEmpty())
                     .mapNotNull { m -> attr(m.value.substringAfterLast("<content"), "src")?.let { plain(m.groupValues[1]) to resolve(path, it) } }.toList()
             }.orEmpty()
-        } catch (e: IOException) { zip.close(); throw e }
+        } catch (e: Exception) { zip.close(); throw e } // openBook turns a non-IO one (a bad %zz in an href) into IOException
     }
 
     /** [href] as written inside the file [from], as a zip entry (keeping any #anchor). */

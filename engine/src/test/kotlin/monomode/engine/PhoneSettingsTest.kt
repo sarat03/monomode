@@ -32,7 +32,7 @@ class PhoneSettingsTest {
         val app = App(can = Profile.E_READER.changes.map { it.key }.toSet())
         val r = rec()
         applyProfile(app.orElse { opened = true; ShellSettings(phone) }, Profile.E_READER, r)
-        restoreProfile(app.orElse { opened = true; ShellSettings(phone) }, r)
+        restoreProfile(app.orElse { opened = true; ShellSettings(phone) }, Profile.E_READER, r)
         assertFalse(opened)
         assertEquals(start, phone.values)
     }

@@ -130,4 +130,30 @@ class EpubTest {
         }
         Epub(epub(two)).use { b -> assertEquals("", b.series); assertNull(b.seriesIndex) }
     }
+
+    // ---- malicious books: each must fail as IOException or open safely, never crash the caller
+
+    @Test fun `a character reference past Unicode in the title is kept as written`() {
+        openBook(epub(two.replace("Tom &amp; Jerry", "A&#x110000;B&#1114112;"))).use { assertEquals("A&#x110000;B&#1114112;", it.title) }
+    }
+
+    @Test fun `a bad percent escape in an href fails as IOException`() {
+        val f = epub(two.replace("text/b.xhtml\"", "text/b%zz.xhtml\""))
+        assertFailsWith<IOException> { openBook(f) }
+        assertNull(bookCover(f))
+    }
+
+    @Test fun `a zip entry that inflates past the cap reads as missing`() {
+        val f = File(dir, "bomb.epub")
+        ZipOutputStream(f.outputStream()).use { z ->
+            fun put(name: String, bytes: ByteArray) { z.putNextEntry(ZipEntry(name)); z.write(bytes); z.closeEntry() }
+            put("META-INF/container.xml", "<container><rootfiles><rootfile full-path=\"OEBPS/content.opf\"/></rootfiles></container>".toByteArray())
+            put("OEBPS/content.opf", two.toByteArray())
+            z.putNextEntry(ZipEntry("OEBPS/text/b.xhtml"))
+            val zeros = ByteArray(1024 * 1024)
+            repeat(MAX_BOOK_BYTES / zeros.size + 1) { z.write(zeros) }
+            z.closeEntry()
+        }
+        openBook(f).use { assertNull(it.bytes("OEBPS/text/b.xhtml")) }
+    }
 }

@@ -39,7 +39,7 @@ class RealAdbdProfileTest {
             val before = snapshot(sh, profile)
             applyProfile(ShellSettings(sh), profile, record)
             assertNotEquals(before, snapshot(sh, profile))
-            restoreProfile(ShellSettings(sh), record)
+            restoreProfile(ShellSettings(sh), profile, record)
             assertEquals(before, snapshot(sh, profile))
         }
     }

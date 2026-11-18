@@ -169,8 +169,9 @@ class HomeActivity : ComponentActivity() {
             // wake at each new minute, so the clock never lags the status bar's
             LaunchedEffect(Unit) { while (true) { now = Date(); batteryLevel = battery(); delay(60_000 - System.currentTimeMillis() % 60_000) } }
             LaunchedEffect(resumes, reader?.pkg) {
-                val found = if (reader?.pkg == KOREADER && Environment.isExternalStorageManager()) withContext(Dispatchers.IO) { koreaderBook(Environment.getExternalStorageDirectory()) } else null
-                if (found?.path != book?.path) cover = found?.let { withContext(Dispatchers.IO) { loadCover(it.path) } }
+                val found = if (reader?.pkg == KOREADER && Environment.isExternalStorageManager()) withContext(Dispatchers.IO) { try { koreaderBook(Environment.getExternalStorageDirectory()) } catch (e: Exception) { null } } else null
+                // the book and its cover are untrusted files: a malformed one shows no banner instead of crashing Home
+                if (found?.path != book?.path) cover = found?.let { withContext(Dispatchers.IO) { try { loadCover(it.path) } catch (e: Exception) { null } } }
                 book = found
             }
             // the reader is an app, not a home screen: shown when opened (E-reader switched on, or a book handed over with "Open with"), else the launcher
