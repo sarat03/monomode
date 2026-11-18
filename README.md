@@ -7,10 +7,13 @@ It talks to the phone's own `adbd` over **Wireless debugging** (Android 11+), so
 ## What it does
 
 - **Network & access**: which apps use the internet and what can reach the phone (open network ports, apps with accessibility, notification or device-admin access, user certificates, VPN, apps from outside the Play Store). Read-only.
-- **App cleaner**: uninstall bloatware or disable apps you don't use, in small batches. After each batch it checks that Home, calls and the keyboard still work, and undoes the batch if not. Every removal can be restored, and a copy of the restore list is saved in `Downloads/MonoMode`.
+- **App cleaner**: uninstall bloatware or disable apps you don't use, in small batches. Listing your apps needs no Wireless debugging; removing or disabling does. After each batch it checks that Home, calls and the keyboard still work, and undoes the batch if not. Every removal can be restored, and a copy of the restore list is saved in `Downloads/MonoMode`.
 - **Modes**: one switch changes a few settings for one job, and turning it off puts your own settings back exactly as they were.
-  - **Kiosk**: a home screen with only the apps you choose, or one app pinned (PIN to unpin).
-  - **E-reader**: grey screen, no animations, Do not disturb, battery saver, and a paper-like home screen that opens your reading app.
+  - **Kiosk**: a home screen with only the apps you choose, or one app pinned (PIN to unpin). Pinning an app uses Wireless debugging each time, and MonoMode turns it off again.
+  - **E-reader**: grey screen, no animations, Do not disturb, battery saver, and a library as the home screen. Once it is on, *Enter e-reader* takes you back to it.
+- **Built-in reader**: a library and reader for EPUB, TXT, HTML, FB2, CBZ and PDF books, with bookmarks, highlights with notes, search, read aloud, reading lists and statistics. Pages are centred columns (two on wide screens), with your choice of font, size, spacing and margins, in day, sepia or night themes. Books are treated as untrusted: size is capped, and scripts inside a book are blocked.
+- **Everyday launcher**: with no mode on, MonoMode can be the phone's home screen, showing all your apps.
+- **Tablets**: a navigation rail and a two-pane layout on wide screens.
 
 ## Install
 
@@ -22,6 +25,8 @@ Download the APK and open it on the phone (Android will ask you to allow install
 Every release is signed with the same key, so it installs over the previous one. To check a download, its signing certificate SHA-256 should be `c9f22ce5758f5e2efe3d2946d08babb3dd9572cb09cb5e2c38dfbf4dd6e48bb7` (`apksigner verify --print-certs monomode-v0.1.0.apk`).
 
 Or build it yourself (below) and install `app/build/outputs/apk/release/app-release.apk`. Then open MonoMode and follow **Set up once**: turn on Developer options and Wireless debugging, tap *Pair device with pairing code*, and type the code into the MonoMode notification.
+
+To list the books on your phone, the library asks for *All files access*. It only reads them; nothing leaves the phone, and the app talks to nothing but the phone's own `adbd`.
 
 Some phones (realme, Oppo, Xiaomi) block settings changes from Wireless debugging until you turn on *Disable permission monitoring* or *USB debugging (Security settings)* in Developer options; MonoMode tells you when that happens.
 
