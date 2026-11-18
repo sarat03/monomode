@@ -61,7 +61,7 @@ internal fun MainActivity.HomeTab() {
         for (p in Profile.entries) {
             val t = if (p == on) Tone(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer) else neutralTone()
             Card(colors = CardDefaults.cardColors(t.bg, t.fg), shape = MaterialTheme.shapes.large,
-                modifier = Modifier.weight(1f).clickable { openMode = p; tab = Page.MODES }) {
+                modifier = Modifier.weight(1f).clickable { if (p == on && p == Profile.E_READER) enterReader() else { openMode = p; tab = Page.MODES } }) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Icon(p.icon, null, Modifier.size(28.dp))
                     Text(getString(if (p == on) R.string.on else if (p in installed) R.string.off else R.string.install), style = MaterialTheme.typography.headlineMedium)
@@ -75,7 +75,7 @@ internal fun MainActivity.HomeTab() {
     if (!rail()) {
         Section(getString(R.string.tools))
         HomeRow(AppIcons.Shield, getString(R.string.network_access), if (r == null) getString(R.string.see_which_apps_use_the) else if (look == 0) getString(R.string.nothing_to_look_at) else getString(R.string.s_1x_to_look_at, look), getString(R.string.uses_wireless_debugging_each_time)) { tab = Page.CHECK }
-        HomeRow(AppIcons.Broom, getString(R.string.app_cleaner), if (ps.removed.isEmpty()) getString(R.string.remove_bloatware_and_unused_apps) else getString(R.string.s_1x_removed_or_disabled, ps.removed.size), getString(R.string.uses_wireless_debugging_each_time)) { tab = Page.CLEAN }
+        HomeRow(AppIcons.Broom, getString(R.string.app_cleaner), if (ps.removed.isEmpty()) getString(R.string.remove_bloatware_and_unused_apps) else getString(R.string.s_1x_removed_or_disabled, ps.removed.size), getString(R.string.cleaner_uses_wireless_debugging_to_change)) { tab = Page.CLEAN }
     }
     val w = warnTone()
     if (ps.wirelessOn) Card(colors = CardDefaults.cardColors(w.bg, w.fg), modifier = Modifier.fillMaxWidth()) {

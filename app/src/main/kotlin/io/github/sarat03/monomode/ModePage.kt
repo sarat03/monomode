@@ -63,20 +63,25 @@ internal fun MainActivity.ModePage(profile: Profile) {
         }
         return
     }
+    // MonoMode is on screen, so an app pinned by Kiosk is no longer pinned: someone unpinned it (or it was closed)
+    val pinTo = pinApp?.let { kioskApp() } // read again: the app may have been uninstalled since it was chosen
+    val unpinned = profile == Profile.KIOSK && on == profile && pinTo != null && !pinnedNow && ps.busy == null
     Hero(
         if (on == profile) safeTone() else neutralTone(), profile.icon,
-        if (on == profile) getString(R.string.s_1x_is_on, name) else getString(R.string.s_1x_is_off, name),
-        if (on == profile) getString(R.string.your_settings_come_back_when)
+        if (unpinned) getString(R.string.s_1x_is_on_not_pinned, name) else if (on == profile) getString(R.string.s_1x_is_on, name) else getString(R.string.s_1x_is_off, name),
+        if (unpinned) getString(R.string.the_pin_ended_pin_again, pinTo!!.second)
+        else if (on == profile) getString(R.string.your_settings_come_back_when)
         else if (on != null) getString(R.string.turn_off_1x_first_one, on.label) else profile.what,
     ) {
         val t = if (on == profile) safeTone() else neutralTone()
-        val kioskApp = pinApp?.let { kioskApp() } // read again: the app may have been uninstalled since it was chosen
+        val kioskApp = pinTo
         if (on == profile) {
-            Button({
-                ph.turnOff()
-            }, enabled = ps.busy == null, colors = ButtonDefaults.buttonColors(t.fg, t.bg)) { Text(getString(R.string.turn_off)) }
-            // after someone unpinned: Kiosk is still on, so the app can be pinned again
-            kioskApp?.let { (component, label) -> OutlinedButton({ ph.pin(component, label) }, enabled = ps.busy == null) { Text(getString(R.string.pin_again), color = t.fg) } }
+            // after someone unpinned: Kiosk is still on, so the app can be pinned again, which is then the main action
+            // and the e-reader that is on but not open gets a way back in without turning it off and on
+            if (unpinned) Button({ ph.pin(kioskApp!!.first, kioskApp.second) }, enabled = ps.busy == null, colors = ButtonDefaults.buttonColors(t.fg, t.bg)) { Text(getString(R.string.pin_again)) }
+            else if (profile == Profile.E_READER) Button({ enterReader() }, enabled = ps.busy == null, colors = ButtonDefaults.buttonColors(t.fg, t.bg)) { Text(getString(R.string.enter_e_reader)) }
+            if (unpinned || profile == Profile.E_READER) OutlinedButton({ ph.turnOff() }, enabled = ps.busy == null) { Text(getString(R.string.turn_off), color = t.fg) }
+            else Button({ ph.turnOff() }, enabled = ps.busy == null, colors = ButtonDefaults.buttonColors(t.fg, t.bg)) { Text(getString(R.string.turn_off)) }
         }
         else Button({
             when (profile.firstAsk(off.toSet(), allowed)) {
@@ -92,7 +97,7 @@ internal fun MainActivity.ModePage(profile: Profile) {
     }
     // straight into the reader once the mode is on, as switching on an e-reader does
     LaunchedEffect(on) {
-        if (entering && on == Profile.E_READER) { entering = false; startActivity(Intent(this@ModePage, HomeActivity::class.java).putExtra(EXTRA_LIBRARY, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        if (entering && on == Profile.E_READER) { entering = false; enterReader() }
     }
     Section(getString(R.string.what_changes))
     Panel(Modifier.fillMaxWidth()) {
@@ -124,6 +129,9 @@ internal fun MainActivity.ModePage(profile: Profile) {
         KioskAppPicker(askPin = "Ask for PIN to unpin" !in off, chosen = pinApp) { pinApp = it }
     }
 }
+
+/** Opens the reader (its library), as switching the e-reader on does. */
+internal fun MainActivity.enterReader() = startActivity(Intent(this, HomeActivity::class.java).putExtra(EXTRA_LIBRARY, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 
 /** The second line under an option or tool: what it needs from the user, or that it uses Wireless debugging each time. */
 @Composable

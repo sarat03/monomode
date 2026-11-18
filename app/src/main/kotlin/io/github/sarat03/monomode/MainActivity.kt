@@ -57,6 +57,7 @@ class MainActivity : ComponentActivity() {
             wirelessOn = { Session.isWirelessDebuggingOn(app) }, saveCopy = { Records.copyToDownloads(app, it) }, onChange = { ps = it },
             switchOff = { if (Session.canSwitch(app)) Session.switch(app, false) },
             local = AppSettings(app), pinned = { pinned(app) }, paired = { Pairing.isPaired(app) }, switchOn = { Session.canSwitch(app) && Session.switch(app, true) },
+            lister = AppPackages(app),
         ).also { phone = it }
     }
 
@@ -87,6 +88,8 @@ class MainActivity : ComponentActivity() {
     internal var allFiles by mutableStateOf(false)
     /** The one-time setup is done: MonoMode holds the permission to change settings itself. Reread on return. */
     internal var setUp by mutableStateOf(false)
+    /** Something is pinned (screen pinning) as MonoMode comes back; reread on return, since an ended pin changes nothing else. */
+    internal var pinnedNow by mutableStateOf(false)
     /** Android's Do Not Disturb access, which Mute notifications uses. Reread on return from its Settings page. */
     internal var dnd by mutableStateOf(false)
     internal val allowed get() = Allowed(setUp, dnd)
@@ -96,6 +99,7 @@ class MainActivity : ComponentActivity() {
         allFiles = Environment.isExternalStorageManager()
         setUp = Session.canSwitch(this)
         dnd = dndAccess(this)
+        pinnedNow = pinned(this)
         paired = Pairing.isPaired(this)
         // Wireless debugging stays off: an action that needs it switches it on for itself. Already on (just paired):
         // connects once, which also finishes the setup by granting MonoMode its permission
