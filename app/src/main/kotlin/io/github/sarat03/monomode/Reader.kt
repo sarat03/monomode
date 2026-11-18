@@ -761,15 +761,18 @@ private fun css(l: Look, w: Float, h: Float): String {
     val columns = if (w > 840) 2 else 1
     val m = w / columns * l.margin / 100
     val layout = if (l.scroll) "html{background:$paper !important}body{margin:0 !important;padding:24px ${m}px !important;width:auto !important;"
-        else "html{height:${h}px !important;background:$paper !important}" +
-            "body{box-sizing:content-box !important;margin:0 !important;padding:24px ${m}px !important;width:auto !important;height:${h - 48}px !important;" +
-            "column-width:${w / columns - 2 * m}px !important;column-gap:${2 * m}px !important;column-fill:auto !important;"
+        else "html{height:${h}px !important;margin:0 !important;padding:0 !important;width:auto !important;max-width:none !important;background:$paper !important}" +
+            // a book's own width, auto margins or offsets on the body would shift the columns off the page's centre; a column count (not a width) cannot round down to one column fewer
+            "body{box-sizing:content-box !important;margin:0 !important;padding:24px ${m}px !important;width:auto !important;max-width:none !important;min-width:0 !important;position:static !important;float:none !important;height:${h - 48}px !important;" +
+            "column-count:$columns !important;column-width:auto !important;column-gap:${2 * m}px !important;column-fill:auto !important;"
     // a page is exactly one screen: each column plus its gap is the view's width (or half of it), and the body is one view tall
     // the viewport line pins the zoom: without it the WebView carries a zoom over from the last size it had, and grows it on every turn of the phone
     return "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no\"/><style>$layout" +
         "background:$paper !important;color:$ink !important;line-height:${l.spacing / 100f} !important}" +
         "p,li,blockquote,div{line-height:inherit !important}" +
-        (if (l.font.isNotEmpty()) "body,p,li,div,span,blockquote,td{font-family:${l.font} !important}" else "") +
+        (if (l.font.isNotEmpty()) "body,body *{font-family:${l.font} !important}" else "") +
+        // a wide table or line of code in another font would run past its column into the next page
+        "pre{white-space:pre-wrap !important}pre,table,code{max-width:100% !important}body *{overflow-wrap:break-word}" +
         (if (l.bold) "body,p,li,div,span,td{font-weight:bold !important}" else "") +
         (if (l.justify) "p,li,div{text-align:justify !important}" else "") +
         (if (l.hyphens) "p,li,div{hyphens:auto !important;-webkit-hyphens:auto !important}" else "") +
@@ -779,7 +782,7 @@ private fun css(l: Look, w: Float, h: Float): String {
         "::highlight(quote){background-color:rgba(255,213,79,0.55)}::highlight(find){background-color:rgba(255,145,0,0.7)}" +
         "img,svg,video{max-width:100% !important;max-height:${h - 60}px !important;height:auto;break-inside:avoid}" +
         // a comic's page is its picture alone: the whole screen, not a column of text with margins
-        "html body.comic{padding:0 !important;height:${h}px !important;column-width:auto !important}html body.comic img{max-height:${h}px !important;display:block;margin:0 auto}</style>"
+        "html body.comic{padding:0 !important;height:${h}px !important;column-width:auto !important;column-count:auto !important}html body.comic img{max-height:${h}px !important;display:block;margin:0 auto}</style>"
 }
 
 /**
