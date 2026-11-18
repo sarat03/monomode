@@ -35,6 +35,7 @@ import android.view.WindowInsetsController
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.Surface
 import monomode.engine.label
+import monomode.engine.readCapped
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.material3.IconButton
@@ -265,7 +266,7 @@ class HomeActivity : ComponentActivity() {
         return try {
             contentResolver.openFileDescriptor(uri, "r")?.use { fd -> Os.readlink("/proc/self/fd/${fd.fd}").takeIf { File(it).canRead() } }
                 // shortcut: a copy is another file to the reader, so its place is kept apart from the original's
-                ?: File(cacheDir, "opened-${uri.toString().hashCode()}.${kind(uri)}").also { copy -> contentResolver.openInputStream(uri)!!.use { from -> copy.outputStream().use { from.copyTo(it) } } }.path
+                ?: File(cacheDir, "opened-${uri.toString().hashCode()}.${kind(uri)}").also { copy -> contentResolver.openInputStream(uri)!!.use { from -> copy.writeBytes(from.readCapped() ?: throw java.io.IOException("too big to open")) } }.path
         } catch (e: Exception) { null } // no longer there, or not ours to read: nothing to open
     }
 

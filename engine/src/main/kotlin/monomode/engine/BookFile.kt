@@ -7,6 +7,25 @@ import java.net.URLEncoder
 import java.util.Base64
 import java.util.zip.ZipFile
 
+/** shortcut: one cap for any chapter, page or whole-file book, far above a real one; raise it if a real book hits it. */
+const val MAX_BOOK_BYTES = 64 shl 20
+
+/** All of this stream, or null once it passes [MAX_BOOK_BYTES], so a crafted book cannot run the phone out of memory. A zip's sizes can lie, so the read itself stops. */
+fun java.io.InputStream.readCapped(): ByteArray? {
+    val out = java.io.ByteArrayOutputStream()
+    val buf = ByteArray(1 shl 16)
+    while (true) {
+        val n = read(buf)
+        if (n < 0) return out.toByteArray()
+        out.write(buf, 0, n)
+        if (out.size() > MAX_BOOK_BYTES) return null
+    }
+}
+
+/** A whole-file book's bytes; IOException, like any broken book, when it is over [MAX_BOOK_BYTES]. */
+private fun whole(file: File): ByteArray =
+    if (file.length() > MAX_BOOK_BYTES) throw IOException("too big to open: ${file.name}") else file.readBytes()
+
 /** One place a search found: the [nth] match (from 0) in the text of [chapter], with the words around it. */
 data class Hit(val chapter: Int, val nth: Int, val snippet: String)
 
@@ -94,7 +113,7 @@ val BOOK_TYPES = setOf("epub", "txt", "html", "htm", "fb2", "cbz", "pdf")
 /** The book in [file], read the way its extension says. Throws IOException for a file that is not what it claims, or of no known kind. */
 fun openBook(file: File): BookFile = when (file.extension.lowercase()) {
     "epub" -> Epub(file)
-    "txt" -> Made(file.nameWithoutExtension) { txt(read(file.readBytes(), markup = false)) }
+    "txt" -> Made(file.nameWithoutExtension) { txt(read(whole(file), markup = false)) }
     "html", "htm" -> html(file)
     "fb2" -> fb2(file)
     "cbz" -> Cbz(file)
@@ -160,7 +179,7 @@ private fun txt(text: String): Parts {
 
 /** A web page saved as a file: one chapter. shortcut: pictures and styles kept in files beside it are not shown. */
 private fun html(file: File) = Made(tag(head(file), "title")?.let(::plain)?.ifBlank { null } ?: file.nameWithoutExtension) {
-    val text = read(file.readBytes())
+    val text = read(whole(file))
     Parts(listOf("index.html"), mapOf("index.html" to if (Regex("<body", RegexOption.IGNORE_CASE).containsMatchIn(text)) text.toByteArray() else page(text)))
 }
 
@@ -198,7 +217,7 @@ private fun fb2(file: File): BookFile {
         series = sequence?.let { attr(it, "name") }.orEmpty(),
         seriesIndex = sequence?.let { attr(it, "number") }?.toFloatOrNull(),
     ) {
-        val xml = read(file.readBytes())
+        val xml = read(whole(file))
         val binaries = Regex("<binary\\b([^>]*)>([^<]*)</binary>").findAll(xml).mapNotNull { m -> attr(m.groupValues[1], "id")?.let { Triple(it, attr(m.groupValues[1], "content-type"), m.groupValues[2]) } }.toList()
         val bodies = Regex("<body\\b[^>]*>(.*?)</body>", RegexOption.DOT_MATCHES_ALL).findAll(xml).map { it.groupValues[1] }.toList()
         val (lead, sections) = sections(bodies.firstOrNull().orEmpty())
@@ -243,7 +262,7 @@ private class Cbz(file: File) : BookFile() {
     // the class is for the page's own style sheet: a picture fills the screen instead of a column of text
     override fun bytes(entry: String): ByteArray? = spine.indexOf(entry).takeIf { it >= 0 }?.let { i ->
         "<html><head></head><body class=\"comic\"><img src=\"/${pictures[i].split('/').joinToString("/") { URLEncoder.encode(it, "UTF-8").replace("+", "%20") }}\" alt=\"\"/></body></html>".toByteArray()
-    } ?: zip.getEntry(entry)?.let { zip.getInputStream(it).use { s -> s.readBytes() } }
+    } ?: zip.getEntry(entry)?.let { zip.getInputStream(it).use { s -> s.readCapped() } }
     override fun mediaType(entry: String) = if (entry in spine) "text/html" else null
     override fun cover() = bytes(pictures[0])
     override fun size(entry: String) = 1L

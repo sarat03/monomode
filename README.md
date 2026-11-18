@@ -36,7 +36,7 @@ Needs JDK 21 and the Android SDK (`ANDROID_HOME`).
 | `engine` | Checks, debloat, modes and `Phone` (the app's state and actions), all behind one small `Shell` interface, so they are tested without a phone |
 | `app` | The Android app: Compose screens, the TLS connection, the mode home screens |
 
-Design decisions are in `docs/adr/`.
+Design decisions are in `docs/adr/`, what each feature is and why in `docs/features.md`, the project's words in `CONTEXT.md`, and how to work on it in `CONTRIBUTING.md`.
 
 ## Python CLI
 

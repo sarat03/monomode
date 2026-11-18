@@ -38,7 +38,7 @@ pass on the emulator, and every page was checked on the phone and tablet emulato
 to plain parameters (state in, callbacks out), so it can be previewed and tested without the activity.
 Do it page by page, starting with `ModePage`, whose decisions already live in `engine/Needs.kt`. The
 companion object's state then becomes one `MainScreenState` passed down. Done all at once, it would
-rewrite every page for no visible gain.
+rewrite every page for no visible gain. Recorded as ADR 0007.
 
 ## 4. Reader.kt
 

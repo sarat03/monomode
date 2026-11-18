@@ -19,10 +19,24 @@ private val PLAIN_ARG = Regex("^[A-Za-z0-9._/:=,@+-]+$")
  * adbd hands the shell service a string that sh parses, so argv is joined by spaces and any
  * argument sh could interpret is refused. ponytail: no quoting; add it if an argument ever needs a space.
  */
-fun commandLine(args: List<String>): String = args.joinToString(" ") { a ->
-    require(PLAIN_ARG.matches(a)) { "argument not safe for sh: $a" }
-    a
+fun commandLine(args: List<String>): String {
+    require(allowed(args)) { "command not allowed: ${args.take(3)}" }
+    return args.joinToString(" ") { a ->
+        require(PLAIN_ARG.matches(a)) { "argument not safe for sh: $a" }
+        a
+    }
 }
+
+/** Every command MonoMode may send to the phone, as listed in SECURITY.md. Anything else is refused before it leaves. */
+private val ALLOWED = listOf(
+    "pm list packages", "pm disable-user", "pm enable", "pm uninstall", "pm grant", "pm revoke",
+    "cmd package resolve-activity", "cmd package install-existing", "cmd package set-home-activity", "cmd notification set_dnd",
+    "settings get", "settings put", "settings delete",
+    "am start", "am stack list", "am task lock",
+).map { it.split(" ") }
+
+internal fun allowed(args: List<String>) = ALLOWED.any { args.take(it.size) == it } ||
+    args.size == 2 && args[0] == "cat" && args[1] in setOf("/proc/net/tcp", "/proc/net/tcp6") // Network & access, read-only
 
 enum class Risk { SAFE, CAUTION, RISKY }
 

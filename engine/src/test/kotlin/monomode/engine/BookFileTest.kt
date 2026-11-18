@@ -176,4 +176,21 @@ class BookFileTest {
         assertNull(bookCover(file("no.fb2", "hello")))
         assertNull(bookCover(file("t.txt", "hello")))
     }
+
+    /** Zeros, [size] of them, without holding them in memory. */
+    private fun zeros(size: Long) = object : java.io.InputStream() {
+        var left = size
+        override fun read() = if (left-- > 0) 0 else -1
+        override fun read(b: ByteArray, off: Int, len: Int): Int = if (left <= 0) -1 else minOf(len.toLong(), left).toInt().also { left -= it; b.fill(0, off, off + it) }
+    }
+
+    @Test fun `a read stops past the cap instead of running out of memory`() {
+        assertEquals(MAX_BOOK_BYTES, zeros(MAX_BOOK_BYTES.toLong()).readCapped()?.size)
+        assertNull(zeros(MAX_BOOK_BYTES + 1L).readCapped())
+    }
+
+    @Test fun `a whole-file book over the cap does not open`() {
+        val big = File(dir, "big.txt").also { java.io.RandomAccessFile(it, "rw").use { f -> f.setLength(MAX_BOOK_BYTES + 1L) } } // sparse: no real disk use
+        assertFailsWith<IOException> { openBook(big).spine }
+    }
 }
