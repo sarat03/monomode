@@ -66,6 +66,7 @@ Template for a new section:
 **Where:** `Reader.kt`, `Pdf.kt`; `engine/BookFile.kt`, `Epub.kt`, `Catalog.kt`, `Shelf.kt`, `Tap.kt`, `KoReader.kt`.
 **Decisions:** what the reader remembers lives in the engine behind a `Store`. Formats share one `BookFile` interface. Books are untrusted: chapters, pages, whole-file books and "Open with" copies stop at `MAX_BOOK_BYTES` (64 MB). Full history in `docs/agents/handoff-reader.md`.
 **Tested by:** `EpubTest`, `BookFileTest` (including the size cap), `ShelfTest`, `CatalogTest`, `TapTest`; the page view and PDF by scripted emulator runs only.
+**Layout (2026-11-17):** pages are `column-count` columns (1, or 2 on wide screens) with equal side padding, and the book's own html/body width, max-width and offsets are overridden so the text stays centred; the chosen font applies to every descendant, and wide tables and code are kept inside their column. The library has a compact 40dp search field with the sort and view menu beside it, under the title line.
 **Open:** `Reader.kt` (about 1,100 lines) is to be split (`docs/architecture-plan.md` §4); review items at the end of the handoff.
 
 ## Release (2026-11-05, #15)

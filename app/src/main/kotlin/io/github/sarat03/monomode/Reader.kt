@@ -125,7 +125,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -356,10 +359,10 @@ internal fun Library(resumes: Int, clock: String, onMonoMode: () -> Unit, onSett
     var view by remember { mutableStateOf("all") }
     var group by remember { mutableStateOf<String?>(null) }
     var query by remember { mutableStateOf("") }
+    val searchBooks = stringResource(R.string.search_books)
     var sort by remember { mutableStateOf(shelf.sort) }
     var grid by remember { mutableStateOf(shelf.grid) }
     var detail by remember { mutableStateOf<BookInfo?>(null) }
-    var searching by remember { mutableStateOf(false) }
     var menu by remember { mutableStateOf(false) }
     var browse by remember { mutableStateOf(false) }
     val root = Environment.getExternalStorageDirectory()
@@ -371,7 +374,7 @@ internal fun Library(resumes: Int, clock: String, onMonoMode: () -> Unit, onSett
             }
         }
     }
-    BackHandler(searching || group != null || view != "all") { if (searching) { searching = false; query = "" } else if (group != null) group = null else view = "all" }
+    BackHandler(query.isNotEmpty() || group != null || view != "all") { if (query.isNotEmpty()) query = "" else if (group != null) group = null else view = "all" }
 
     val list = books
     val grouping = view in setOf("authors", "series", "collections", "folders")
@@ -392,35 +395,41 @@ internal fun Library(resumes: Int, clock: String, onMonoMode: () -> Unit, onSett
     @Composable fun Check(on: Boolean) { if (on) Icon(Icons.Filled.Check, null) }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (searching) {
-                val focus = remember { FocusRequester() }
-                OutlinedTextField(query, { query = it }, Modifier.weight(1f).focusRequester(focus), singleLine = true, placeholder = { Text(stringResource(R.string.search_books)) })
-                LaunchedEffect(Unit) { focus.requestFocus() }
-                IconButton({ searching = false; query = "" }) { Icon(Icons.Filled.Close, stringResource(R.string.close_search)) }
-            } else {
-                Text(stringResource(R.string.library), Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(clock, Modifier.padding(end = 8.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (!list.isNullOrEmpty()) {
-                    IconButton({ searching = true }) { Icon(Icons.Filled.Search, stringResource(R.string.search_books)) }
-                    Box {
-                        IconButton({ menu = true }) { Icon(AppIcons.Sort, stringResource(R.string.sort_and_view)) }
-                        DropdownMenu(menu, { menu = false }) {
-                            @Composable fun Title(text: Int) = Text(stringResource(text), Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Title(R.string.sort_by)
-                            for ((key, label) in listOf("recent" to R.string.sort_recent, "title" to R.string.sort_title, "author" to R.string.sort_author))
-                                DropdownMenuItem({ Text(stringResource(label)) }, { sort = key; shelf.sort = key; menu = false }, trailingIcon = { Check(sort == key) })
-                            HorizontalDivider()
-                            Title(R.string.show_as)
-                            for ((key, label) in listOf(false to R.string.as_list, true to R.string.as_grid))
-                                DropdownMenuItem({ Text(stringResource(label)) }, { grid = key; shelf.grid = key; menu = false }, trailingIcon = { Check(grid == key) })
-                            HorizontalDivider()
-                            DropdownMenuItem({ Text(stringResource(R.string.statistics)) }, { view = "stats"; group = null; menu = false })
+            Text(stringResource(R.string.library), Modifier.weight(1f).semantics { heading() }, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(clock, Modifier.padding(end = 8.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // MonoMode's own mark: the way out of the mode, or to change it
+            IconButton(onMonoMode) { Icon(painterResource(R.drawable.ic_launcher_monochrome), stringResource(R.string.open_monomode), Modifier.size(40.dp)) }
+            IconButton(onSettings) { Icon(Icons.Outlined.Settings, stringResource(R.string.settings)) }
+        }
+        if (!list.isNullOrEmpty()) Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            // a short field of its own (a Material one is 56dp tall), with the sort and view menu beside it
+            val line = MaterialTheme.colorScheme.outline
+            BasicTextField(query, { query = it }, Modifier.weight(1f).height(40.dp).semantics { contentDescription = searchBooks }, singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface), cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                decorationBox = { inner ->
+                    Row(Modifier.fillMaxSize().border(1.dp, line, CircleShape).padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.Search, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Box(Modifier.weight(1f).padding(start = 8.dp)) {
+                            if (query.isEmpty()) Text(searchBooks, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                            inner()
                         }
+                        if (query.isNotEmpty()) IconButton({ query = "" }, Modifier.size(32.dp)) { Icon(Icons.Filled.Close, stringResource(R.string.close_search), Modifier.size(18.dp)) }
                     }
+                })
+            Box {
+                IconButton({ menu = true }) { Icon(AppIcons.Sort, stringResource(R.string.sort_and_view)) }
+                DropdownMenu(menu, { menu = false }) {
+                    @Composable fun Title(text: Int) = Text(stringResource(text), Modifier.padding(horizontal = 12.dp, vertical = 8.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Title(R.string.sort_by)
+                    for ((key, label) in listOf("recent" to R.string.sort_recent, "title" to R.string.sort_title, "author" to R.string.sort_author))
+                        DropdownMenuItem({ Text(stringResource(label)) }, { sort = key; shelf.sort = key; menu = false }, trailingIcon = { Check(sort == key) })
+                    HorizontalDivider()
+                    Title(R.string.show_as)
+                    for ((key, label) in listOf(false to R.string.as_list, true to R.string.as_grid))
+                        DropdownMenuItem({ Text(stringResource(label)) }, { grid = key; shelf.grid = key; menu = false }, trailingIcon = { Check(grid == key) })
+                    HorizontalDivider()
+                    DropdownMenuItem({ Text(stringResource(R.string.statistics)) }, { view = "stats"; group = null; menu = false })
                 }
-                // MonoMode's own mark: the way out of the mode, or to change it
-                IconButton(onMonoMode) { Icon(painterResource(R.drawable.ic_launcher_monochrome), stringResource(R.string.open_monomode), Modifier.size(40.dp)) }
-                IconButton(onSettings) { Icon(Icons.Outlined.Settings, stringResource(R.string.settings)) }
             }
         }
         BoxWithConstraints(Modifier.weight(1f)) {
