@@ -14,7 +14,14 @@ It talks to the phone's own `adbd` over **Wireless debugging** (Android 11+), so
 
 ## Install
 
-Build it (below) and install `app/build/outputs/apk/release/app-release.apk`. Then open MonoMode and follow **Set up once**: turn on Developer options and Wireless debugging, tap *Pair device with pairing code*, and type the code into the MonoMode notification.
+Download the APK and open it on the phone (Android will ask you to allow installs from your browser or file manager):
+
+- **[monomode-v0.1.0.apk](https://github.com/sarat03/monomode/releases/download/v0.1.0/monomode-v0.1.0.apk)**, direct download of the latest release
+- [All releases](https://github.com/sarat03/monomode/releases), for newer and older versions
+
+Every release is signed with the same key, so it installs over the previous one. To check a download, its signing certificate SHA-256 should be `c9f22ce5758f5e2efe3d2946d08babb3dd9572cb09cb5e2c38dfbf4dd6e48bb7` (`apksigner verify --print-certs monomode-v0.1.0.apk`).
+
+Or build it yourself (below) and install `app/build/outputs/apk/release/app-release.apk`. Then open MonoMode and follow **Set up once**: turn on Developer options and Wireless debugging, tap *Pair device with pairing code*, and type the code into the MonoMode notification.
 
 Some phones (realme, Oppo, Xiaomi) block settings changes from Wireless debugging until you turn on *Disable permission monitoring* or *USB debugging (Security settings)* in Developer options; MonoMode tells you when that happens.
 
