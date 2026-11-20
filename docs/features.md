@@ -31,11 +31,11 @@ Template for a new section:
 **Decisions:** findings are `LOOK` or `INFO`, never a verdict. Built-in apps go under a drop-down: their access is usually how Android works.
 **Tested by:** `NetworkTest`, `AccessTest`, `FindingsTest`; `DeviceChecksTest` and `RealAdbdExposureTest` on a device.
 
-## App cleaner (2026-10-22)
+## App cleaner (2026-10-22, last changed 2026-11-19)
 **What:** disable or uninstall unused apps in checked batches, and restore any of them.
-**Where:** `engine/Engine.kt` (`Debloat`, `apply`, `restore`, drift), `Records.kt`, `CleanupTab.kt`, lists in `examples/` and `lists/`; `cli.py`/`core.py` do the same over USB for Android 7-10.
-**Decisions:** batches of five with a health check and rollback, user 0 only, Remove only for built-in apps, record written as each change applies (ADR 0008). Lists ship in the app (ADR 0002).
-**Tested by:** `EngineTest`, `DebloatTest`, `RealAdbdDebloatTest`; `test_core.py` for the CLI.
+**Where:** `engine/Engine.kt` (`Debloat`, `apply`, `restore`, drift), `engine/History.kt`, `Records.kt`, `CleanupTab.kt`, lists in `examples/` and `lists/`; `cli.py`/`core.py` do the same over USB for Android 7-10.
+**Decisions:** batches of five with a health check and rollback, user 0 only, Remove only for built-in apps, record written as each change applies (ADR 0008). Lists ship in the app (ADR 0002). History (#43): the cleaner's History chip lists every change held, apps and the mode that is on, newest first, with a Restore each (the existing `restore` and `turnOff`) and Revert all behind a confirm; a failed item keeps its record and is named. Each record line carries its date (` @<millis>` for apps, a `# <millis>` first line for a mode); records from before dates show none. A mode is one item (its settings go back together), not one per setting.
+**Tested by:** `EngineTest`, `DebloatTest`, `HistoryTest`, `RealAdbdDebloatTest`; `test_core.py` for the CLI.
 
 ## Modes: Kiosk and E-reader (2026-10-22, last changed 2026-11-14)
 **What:** one switch per job that changes a few settings and puts the user's own back exactly when turned off, each with its own home screen.

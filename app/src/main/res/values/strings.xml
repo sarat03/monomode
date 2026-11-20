@@ -297,4 +297,15 @@
     <string name="cleaner_uses_wireless_debugging_to_change">Listing apps needs nothing; removing or disabling uses Wireless debugging for a moment, and MonoMode turns it on and off.</string>
     <string name="pinning_switches_off_wireless_debugging">Pinning also switches off Wireless debugging.</string>
     <string name="app_to_pin">App to pin</string>
+    <string name="history">History</string>
+    <string name="history_empty">MonoMode holds no changes right now.</string>
+    <string name="history_intro">Everything MonoMode changed on this phone and can put back, newest first.</string>
+    <string name="history_since">Since %1$s</string>
+    <string name="history_mode">%1$s mode · %2$d settings changed</string>
+    <string name="history_restore">Restore</string>
+    <string name="history_restore_1x">Restore %1$s</string>
+    <string name="revert_all">Revert all</string>
+    <string name="revert_all_title">Revert all changes?</string>
+    <string name="revert_all_body">Apps come back and the mode is turned off. %1$d changes in all.</string>
+    <string name="cancel">Cancel</string>
 </resources>

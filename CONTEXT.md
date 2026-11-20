@@ -27,6 +27,7 @@ code, commits, issues and screen text. When a new term settles, add it here in t
 | **Risk** | `SAFE` (pre-selected), `CAUTION`, `RISKY`. Packages in `lists/protected.txt` are never offered. | `engine/Engine.kt` |
 | **Method** | `DISABLE` (`pm disable-user`) or `REMOVE` (`pm uninstall --user 0`). Both restorable. | `engine/Engine.kt` |
 | **Batch** | A few packages changed at once, then the **health check** (Home, dialer, keyboard still work). A failed check undoes the batch. | `Debloat` |
+| **History** | Everything MonoMode currently holds, apps and the mode that is on, with dates; Restore per item, Revert all. | `engine/History.kt`, `CleanupTab.kt` |
 | **Restore record** | Every change, so it can be undone; copied to `Downloads/MonoMode`. | `Records.kt` |
 
 ## Modes
