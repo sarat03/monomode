@@ -252,6 +252,12 @@
     <string name="today">Today</string>
     <string name="last_7_days">Last 7 days</string>
     <string name="all_time">All time</string>
+    <string name="daily_goal">Daily goal</string>
+    <string name="goal_less">Lower daily goal by 5 minutes</string>
+    <string name="goal_more">Raise daily goal by 5 minutes</string>
+    <string name="goal_off">Off</string>
+    <string name="goal_today">Today: %1$d of %2$d min</string>
+    <plurals name="streak_days"><item quantity="one">Streak: %1$d day</item><item quantity="other">Streak: %1$d days</item></plurals>
     <string name="by_day">By day</string>
     <string name="by_book">By book</string>
     <string name="no_reading_time_yet">No reading time yet. It is counted while you turn pages.</string>

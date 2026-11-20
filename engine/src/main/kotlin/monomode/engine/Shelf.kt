@@ -2,6 +2,7 @@ package monomode.engine
 
 import java.net.URLDecoder
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.net.URLEncoder
 
@@ -106,6 +107,11 @@ class Shelf(private val store: Store, private val now: () -> Long = System::curr
         get() = store.get("colour") != "false"
         set(v) = store.put("colour", v.toString())
 
+    /** Minutes to read each day; 0 is no goal. */
+    var goalMinutes: Int
+        get() = store.get("goal")?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+        set(v) = store.put("goal", v.coerceAtLeast(0).toString())
+
     /** A book's bookmarks, in reading order. */
     fun marks(path: String): List<Mark> = store.get("marks:$path").orEmpty().lines().mapNotNull { line ->
         val v = line.split('|', limit = 5)
@@ -185,4 +191,17 @@ class Shelf(private val store: Store, private val now: () -> Long = System::curr
 
     /** Seconds read on each day ("2026-11-11"), all books together, oldest day first. */
     fun timeByDay(): Map<String, Long> = store.get("days").orEmpty().split(';').mapNotNull { e -> e.split('=').takeIf { it.size == 2 }?.let { it[0] to (it[1].toLongOrNull() ?: 0L) } }.sortedBy { it.first }.toMap()
+}
+
+/**
+ * Days in a row, ending today, on which [days] (seconds read, by "2026-11-11") reached [goalMinutes].
+ * Today not yet reached does not break it: the count then ends yesterday. 0 when there is no goal.
+ */
+fun streak(days: Map<String, Long>, goalMinutes: Int, today: LocalDate): Int {
+    if (goalMinutes <= 0) return 0
+    fun met(d: LocalDate) = (days[d.toString()] ?: 0L) >= goalMinutes * 60L
+    var day = if (met(today)) today else today.minusDays(1)
+    var n = 0
+    while (met(day)) { n++; day = day.minusDays(1) }
+    return n
 }

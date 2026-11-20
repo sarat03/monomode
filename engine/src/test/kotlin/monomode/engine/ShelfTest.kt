@@ -155,6 +155,36 @@ class ShelfTest {
         assertEquals(mapOf("1970-01-11" to 150L, "1970-01-12" to 60L), shelf.timeByDay())
     }
 
+    private val today = java.time.LocalDate.of(2026, 11, 19)
+    private val days = mapOf("2026-11-19" to 600L, "2026-11-18" to 900L, "2026-11-17" to 1200L, "2026-11-15" to 5000L)
+
+    @Test fun `the streak counts the days in a row that met the goal, up to today`() {
+        assertEquals(3, streak(days, 10, today))
+    }
+
+    @Test fun `a day that fell short ends the streak, even when earlier days were long`() {
+        assertEquals(2, streak(days + ("2026-11-17" to 599L), 10, today))
+        assertEquals(0, streak(days + ("2026-11-18" to 0L) + ("2026-11-19" to 0L), 10, today))
+    }
+
+    @Test fun `today not yet met does not break the streak`() {
+        assertEquals(2, streak(days + ("2026-11-19" to 59L), 10, today))
+    }
+
+    @Test fun `the streak crosses a month boundary`() {
+        assertEquals(2, streak(mapOf("2026-10-31" to 60L, "2026-11-01" to 60L), 1, java.time.LocalDate.of(2026, 11, 1)))
+    }
+
+    @Test fun `with the goal off there is no streak, and a changed goal changes it`() {
+        assertEquals(0, streak(days, 0, today))
+        assertEquals(2, streak(days, 15, today))
+        assertEquals(0, shelf.goalMinutes)
+        shelf.goalMinutes = 20
+        assertEquals(20, shelf.goalMinutes)
+        assertEquals(0, streak(days, shelf.goalMinutes, today))
+        shelf.goalMinutes = -5
+        assertEquals(0, shelf.goalMinutes)
+    }
     @Test fun `exports highlights as markdown with title, place and note`() {
         val quotes = listOf(Quote(0, 7, 9, "ab", "", 1L), Quote(2, 40, 52, "grey\nwater", "why", 2L))
         assertEquals("# Dune\n\n> ab\n\n- Chapter 1\n\n> grey\n> water\n\n- Chapter 3\n- Note: why\n", exportQuotes("Dune", quotes) { "Chapter ${it.chapter + 1}" })
