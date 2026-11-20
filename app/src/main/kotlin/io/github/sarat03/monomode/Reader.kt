@@ -115,6 +115,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.foundation.layout.defaultMinSize
+import monomode.engine.streak
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -518,6 +521,26 @@ private fun LazyListScope.statistics(shelf: Shelf, books: List<BookInfo>) {
                 R.string.last_7_days to days.filterKeys { it > today.minusDays(7).toString() }.values.sum(),
                 R.string.all_time to days.values.sum(),
             )) Row { Text(stringResource(label), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge); Text(span(seconds), style = MaterialTheme.typography.bodyLarge) }
+        }
+    }
+    item {
+        var goal by remember { mutableIntStateOf(shelf.goalMinutes) }
+        val set = { m: Int -> goal = m.coerceIn(0, 240); shelf.goalMinutes = goal }
+        val lessGoal = stringResource(R.string.goal_less)
+        val moreGoal = stringResource(R.string.goal_more)
+        Column(Modifier.padding(horizontal = 16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.daily_goal), Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                TextButton({ set(goal - 5) }, Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = lessGoal }) { Text("\u2212") }
+                Text(if (goal == 0) stringResource(R.string.goal_off) else stringResource(R.string.time_min, goal.toLong()), style = MaterialTheme.typography.bodyLarge)
+                TextButton({ set(goal + 5) }, Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = moreGoal }) { Text("+") }
+            }
+            if (goal > 0) {
+                val today = LocalDate.now()
+                val n = streak(days, goal, today)
+                Text(pluralStringResource(R.plurals.streak_days, n, n), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.goal_today, (days[today.toString()] ?: 0L) / 60, goal), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
     if (days.isNotEmpty()) item { Text(stringResource(R.string.by_day), Modifier.padding(horizontal = 16.dp, vertical = 8.dp).semantics { heading() }, style = MaterialTheme.typography.titleMedium) }

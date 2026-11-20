@@ -52,6 +52,7 @@ code, commits, issues and screen text. When a new term settles, add it here in t
 | **BookFile** | One interface over every format: EPUB, TXT, HTML, FB2, CBZ, PDF. | `engine/BookFile.kt` |
 | **Shelf** | What the reader remembers per book: place, marks, quotes, look. Behind a `Store`. | `engine/Shelf.kt` |
 | **Place / Mark / Quote** | Where a book was left / a bookmark / a highlight with a note. | `engine/Shelf.kt` |
+| **Goal / Streak** | Minutes to read each day (0 = off) / days in a row, ending today, that met it; today unmet does not break it. | `Shelf.goalMinutes`, `streak()` in `engine/Shelf.kt` |
 | **Tap** | What a tap zone does: `BACK`, `FORWARD`, `MENU`, `MARK`. | `engine/Tap.kt` |
 
 ## Words to avoid
