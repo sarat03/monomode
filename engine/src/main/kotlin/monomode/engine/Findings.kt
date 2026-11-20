@@ -53,3 +53,28 @@ fun findings(net: NetworkReport, access: AccessReport, dev: DeviceFacts, ownAdbP
         out += Finding(Level.INFO, "Nothing stood out", "None of the things this check looks for turned up. It looks at network ports, special app access, certificates, VPN and where apps came from.")
     return out
 }
+
+/** Findings not in [previous], matched by level and title: the detail (connection counts) changes between runs. First check ([previous] null) marks nothing. */
+fun newSince(previous: List<Finding>?, current: List<Finding>): Set<Finding> {
+    val seen = (previous ?: return emptySet()).map { it.level to it.title }.toSet()
+    return current.filter { (it.level to it.title) !in seen }.toSet()
+}
+
+/** The report as plain text for sharing: what was found and what it allows, marking what is [new]. No verdict. */
+fun reportText(findings: List<Finding>, new: Set<Finding>): String = buildString {
+    appendLine("MonoMode network & access report")
+    for (level in Level.values()) {
+        val group = findings.filter { it.level == level }
+        if (group.isEmpty()) continue
+        appendLine().appendLine(level.name)
+        for (f in group) appendLine("- ${f.title}${if (f in new) " [New since last check]" else ""}\n  ${f.detail}")
+    }
+}
+
+// shortcut: one finding per line, tab-separated; tabs and newlines in text become spaces, apps and system flag are not kept (only level, title, detail are compared)
+fun encodeFindings(list: List<Finding>): String = list.joinToString("\n") { f -> listOf(f.level.name, f.title, f.detail).joinToString("\t") { it.replace(Regex("[\t\n\r]"), " ") } }
+
+fun decodeFindings(text: String): List<Finding> = text.lines().filter { it.isNotBlank() }.mapNotNull {
+    val p = it.split("\t")
+    if (p.size == 3) Finding(Level.values().firstOrNull { l -> l.name == p[0] } ?: return@mapNotNull null, p[1], p[2]) else null
+}

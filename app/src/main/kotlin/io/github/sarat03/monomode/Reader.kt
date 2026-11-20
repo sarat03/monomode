@@ -128,6 +128,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.CircleShape
@@ -155,6 +156,7 @@ import java.time.LocalDate
 import android.text.format.Formatter
 import monomode.engine.Hit
 import monomode.engine.Quote
+import monomode.engine.exportQuotes
 import monomode.engine.Tap
 import monomode.engine.tapZone
 import org.json.JSONArray
@@ -1129,6 +1131,12 @@ internal fun Reading(path: String, onScreen: () -> Unit, onClose: () -> Unit) {
             }
             else if (tab == "quotes") {
                 if (quotes.isEmpty()) item { Text(stringResource(R.string.no_highlights_yet), Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                if (quotes.isNotEmpty()) item {
+                    val res = LocalResources.current
+                    val export = exportQuotes(book.title, quotes) { q -> list.lastOrNull { (_, to) -> book.spine.indexOf(to.substringBefore('#')).let { it in 0..q.chapter } }?.first ?: res.getString(R.string.chapter_d, q.chapter + 1) }
+                    TextButton({ ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_SUBJECT, book.title).putExtra(Intent.EXTRA_TEXT, export), null)) },
+                        Modifier.padding(horizontal = 16.dp).heightIn(min = 48.dp)) { Text(stringResource(R.string.export_highlights)) }
+                }
                 items(quotes) { q ->
                     Row(Modifier.fillMaxWidth().clickable { locate = "mm.at(mm.range(${q.start},${q.end}))"; jump(q.chapter, 0f); sheet = null; bars = false }.padding(start = 24.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {

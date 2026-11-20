@@ -185,4 +185,8 @@ class ShelfTest {
         shelf.goalMinutes = -5
         assertEquals(0, shelf.goalMinutes)
     }
+    @Test fun `exports highlights as markdown with title, place and note`() {
+        val quotes = listOf(Quote(0, 7, 9, "ab", "", 1L), Quote(2, 40, 52, "grey\nwater", "why", 2L))
+        assertEquals("# Dune\n\n> ab\n\n- Chapter 1\n\n> grey\n> water\n\n- Chapter 3\n- Note: why\n", exportQuotes("Dune", quotes) { "Chapter ${it.chapter + 1}" })
+    }
 }

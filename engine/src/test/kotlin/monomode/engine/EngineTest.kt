@@ -131,7 +131,7 @@ class EngineTest {
         val before = sh.enabled.toSet()
         apply(sh, plan(sh, listOf(Entry("com.vendor.locked", Risk.CAUTION)), maxRisk = Risk.CAUTION), r, method = Method.REMOVE)
         assertTrue(listOf("pm", "uninstall", "-k", "--user", "0", "com.vendor.locked") in sh.calls)
-        assertEquals(listOf("com.vendor.locked removed"), r.readLines())
+        assertEquals(listOf("com.vendor.locked removed"), r.readLines().map { it.substringBefore(" @") })
         restore(sh, r)
         assertTrue(listOf("cmd", "package", "install-existing", "com.vendor.locked") in sh.calls)
         assertEquals(before, sh.enabled) // release gate

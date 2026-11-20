@@ -72,4 +72,36 @@ class FindingsTest {
         val f = findings(net, noAccess, nothing, 0) { if (it == "com.chat.app") "Chat" else it }
         assertEquals("Chat is talking to the internet", f.first().title)
     }
+
+    private val a = Finding(Level.LOOK, "A can read all your notifications", "Including previews.")
+    private val b = Finding(Level.INFO, "B is talking to the internet", "1 open connection: 1.2.3.4:443.")
+
+    @Test fun `first check marks nothing new`() {
+        assertEquals(emptySet(), newSince(null, listOf(a, b)))
+    }
+
+    @Test fun `repeat check marks only what was not there, and ignores changed detail`() {
+        val b2 = b.copy(detail = "2 open connections: 1.2.3.4:443, 5.6.7.8:443.")
+        val c = Finding(Level.LOOK, "C is a device admin", "It can lock the phone.")
+        assertEquals(setOf(c), newSince(listOf(a, b), listOf(a, b2, c)))
+    }
+
+    @Test fun `a finding that disappeared is not listed, and a repeat with none gone marks nothing`() {
+        assertEquals(emptySet(), newSince(listOf(a, b), listOf(a)))
+        assertEquals(emptySet(), newSince(listOf(a, b), listOf(a, b)))
+    }
+
+    @Test fun `report text has sections, marks new findings and gives no verdict`() {
+        val text = reportText(listOf(a, b), setOf(a))
+        assertTrue("LOOK" in text && "INFO" in text)
+        assertTrue(text.lines().first { a.title in it }.contains("New since last check"))
+        assertTrue(!text.lines().first { b.title in it }.contains("New since last check"))
+        for (word in listOf("hack", "safe", "secure", "clean", "infect", "virus", "malware"))
+            assertTrue(word !in reportText(findings(quiet, noAccess, nothing, 0), emptySet()).lowercase() + text.lowercase(), word)
+    }
+
+    @Test fun `saved findings read back the same`() {
+        val odd = a.copy(title = "X | y\tz", detail = "line one\nline two")
+        assertEquals(listOf(odd.copy(title = "X | y z", detail = "line one line two"), b), decodeFindings(encodeFindings(listOf(odd, b))))
+    }
 }
