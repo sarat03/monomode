@@ -26,7 +26,11 @@ Every release is signed with the same key, so it installs over the previous one.
 
 Or build it yourself (below) and install `app/build/outputs/apk/release/app-release.apk`. Then open MonoMode and follow **Set up once**: turn on Developer options and Wireless debugging, tap *Pair device with pairing code*, and type the code into the MonoMode notification.
 
-To list the books on your phone, the library asks for *All files access*. It only reads them; nothing leaves the phone, and the app talks to nothing but the phone's own `adbd`.
+To list the books on your phone, the library asks for *All files access*. It only reads them; nothing leaves the phone, and the app talks to nothing but the phone's own `adbd`, except an optional update check (off by default, see Updates).
+
+## Updates
+
+Settings > Updates has an opt-in check (off by default): it asks `api.github.com` once a day, never while a mode is on, whether a newer release exists (GitHub sees your IP address and that MonoMode asked), and can open the release page in your browser. It downloads and installs nothing. You can also follow the GitHub Releases page with an update tracker such as Obtainium.
 
 Some phones (realme, Oppo, Xiaomi) block settings changes from Wireless debugging until you turn on *Disable permission monitoring* or *USB debugging (Security settings)* in Developer options; MonoMode tells you when that happens.
 

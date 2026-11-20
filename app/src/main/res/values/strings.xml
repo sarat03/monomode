@@ -50,6 +50,17 @@
     <string name="restore_lists">Restore lists</string>
     <string name="a_copy_of_what_was">A copy of what was removed is saved in Downloads/MonoMode.</string>
     <string name="about">About</string>
+    <string name="updates">Updates</string>
+    <string name="check_for_updates_automatically">Check for updates automatically</string>
+    <string name="update_check_note">Once a day, never while a mode is on. Asks api.github.com for the latest release, so GitHub sees your IP address and that MonoMode asked. Nothing is downloaded.</string>
+    <string name="check_now">Check now</string>
+    <string name="checking">Checking…</string>
+    <string name="last_checked">Last checked: %1$s</string>
+    <string name="never_checked">Not checked yet</string>
+    <string name="update_available">Update available: %1$s</string>
+    <string name="up_to_date">Up to date</string>
+    <string name="could_not_check">Could not check</string>
+    <string name="open_release_page">Open release page</string>
     <string name="source_code">Source code</string>
     <string name="modes">Modes</string>
     <string name="on">On</string>
