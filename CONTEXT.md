@@ -54,6 +54,7 @@ code, commits, issues and screen text. When a new term settles, add it here in t
 | **Shelf** | What the reader remembers per book: place, marks, quotes, look. Behind a `Store`. | `engine/Shelf.kt` |
 | **Place / Mark / Quote** | Where a book was left / a bookmark / a highlight with a note. | `engine/Shelf.kt` |
 | **Goal / Streak** | Minutes to read each day (0 = off) / days in a row, ending today, that met it; today unmet does not break it. | `Shelf.goalMinutes`, `streak()` in `engine/Shelf.kt` |
+| **Update check** | The opt-in, once-a-day ask to GitHub for the latest release; shows "Update available" and opens its page. Never downloads. | `engine/Update.kt`, `update/UpdateCheck.kt` |
 | **Tap** | What a tap zone does: `BACK`, `FORWARD`, `MENU`, `MARK`. | `engine/Tap.kt` |
 
 ## Words to avoid

@@ -72,6 +72,12 @@ Template for a new section:
 **Daily goal (2026-11-19, #41):** statistics has a goal row (minutes a day, 0 = off, steps of 5, `Shelf.goalMinutes`) and, with a goal set, today against it and the streak. `streak()` in `Shelf.kt` is pure (day map, goal, today): days in a row ending today that met the goal; today not yet met does not break it. Tested in `ShelfTest`.
 **Open:** `Reader.kt` (about 1,100 lines) is to be split (`docs/architecture-plan.md` §4); review items at the end of the handoff.
 
+## Update check (2026-11-19, #46)
+**What:** an opt-in (off by default) check of GitHub's latest release, with a button that opens the release page. Settings > Updates: automatic check (at most daily, never while a mode is on), Check now, last checked, result. No download or install code (option 1 of #46).
+**Where:** `engine/Update.kt` (parse the feed, compare versions, vet the page URL), `app/update/UpdateCheck.kt` (the one HTTPS GET), `SettingsPage.kt`, `MainActivity.onResume` (automatic check).
+**Decisions:** ADR 0010 narrows ADR 0002; the CI network guard allows `update/UpdateCheck.kt`. Options 2 and 3 of #46 are not built (reasons in ADR 0010).
+**Tested by:** `UpdateTest` (fake feed, malformed input, version compare). The network call and Settings rows are not tested on a device.
+
 ## Release (2026-11-05, #15)
 **What:** pushing a version tag builds a signed APK on GitHub Releases.
 **Where:** `.github/workflows/release.yml`, `docs/release.md`.

@@ -7,3 +7,5 @@ Note: Android requires the INTERNET permission even for loopback sockets. M1 mus
 Update 2026-11-14: the manifest declares INTERNET because the adb sockets need it. Sockets are opened only in `Session.kt` and `tls/` (the pairing and adb transports), to the phone's own adbd. There is no network security config yet, so this rule is kept by review: a new socket, URL or HTTP client anywhere else is a change to this ADR.
 
 Update 2026-11-14 (later): CI now enforces this. The `test.yml` step "No network code outside the adb connection" fails on any socket, URL or HTTP client outside `Session.kt` and `app/tls/`. A network security config would not help: it governs HTTP stacks, not the raw sockets adb uses.
+
+Update: narrowed by ADR 0010 (one opt-in update check to api.github.com, in `update/UpdateCheck.kt` only).
