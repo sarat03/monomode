@@ -15,6 +15,8 @@ code, commits, issues and screen text. When a new term settles, add it here in t
 | **Phone** | The engine module that owns connection, actions, errors and the Retry rule. Screens call it and draw its `PhoneState`. | `engine/Phone.kt` |
 | **PhoneState** | One snapshot of everything the screens show about the phone. | `engine/Phone.kt` |
 | **Set up once** | Pairing plus MonoMode granting itself `WRITE_SECURE_SETTINGS`, so later changes need no Wireless debugging. | `Need.SETUP_ONCE` |
+| **Only for modes** | The default way to use MonoMode: the user's own launcher stays; MonoMode only changes settings while a mode is on. | `Onboarding.kt` |
+| **MonoMode as launcher** | Optional: MonoMode is the phone's home app, chosen by the user in Android's own picker. No mode sets it. | `HomeActivity.kt` |
 
 ## Tools
 

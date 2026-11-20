@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,6 +31,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -53,7 +56,7 @@ import kotlinx.coroutines.launch
 
 private const val PAGES = 4
 
-/** Shown once after install: what MonoMode is, how a mode works, and the only question setup asks, which apps the launcher's home page holds. */
+/** Shown once after install: what MonoMode is, how a mode works, and the only question setup asks: modes only, or MonoMode as the launcher and which apps its home page holds. */
 internal fun MainActivity.onboarded() = launcherPrefs().getBoolean("onboarded", false) || launcherPrefs().getStringSet("pinned", emptySet()).orEmpty().isNotEmpty()
 private fun MainActivity.launcherPrefs() = getSharedPreferences("launcher", android.content.Context.MODE_PRIVATE)
 
@@ -62,9 +65,12 @@ internal fun MainActivity.Onboarding(onDone: () -> Unit) {
     val pager = rememberPagerState { PAGES }
     val scope = rememberCoroutineScope()
     val home = remember { mutableStateListOf<String>() }
+    var launcher by remember { mutableStateOf(false) }
     fun finish() {
         // the launcher reads "pinned" on resume, so these are its home page the next time it opens
-        launcherPrefs().edit().putStringSet("pinned", home.toSet()).putBoolean("onboarded", true).apply()
+        launcherPrefs().edit().putStringSet("pinned", if (launcher) home.toSet() else emptySet()).putBoolean("onboarded", true).apply()
+        // Android decides the default home app, so hand over to its own picker; modes only never touches it
+        if (launcher) runCatching { startActivity(android.content.Intent(android.provider.Settings.ACTION_HOME_SETTINGS)) }
         onDone()
     }
     val last = pager.currentPage == PAGES - 1
@@ -80,7 +86,7 @@ internal fun MainActivity.Onboarding(onDone: () -> Unit) {
                     0 -> { QuietDemo(here); Blurb(R.string.onb_what_title, R.string.onb_what_body) }
                     1 -> { ModeDemo(); Blurb(R.string.onb_modes_title, R.string.onb_modes_body) }
                     2 -> { StepsDemo(here); Blurb(R.string.onb_how_title, R.string.onb_how_body) }
-                    else -> HomeAppsPicker(this, home)
+                    else -> HomeChoice(this, launcher, { launcher = it }, home)
                 }
             }
         }
@@ -156,7 +162,22 @@ private fun MainActivity.StepsDemo(running: Boolean) {
     }
 }
 
-/** The one question setup asks. Unticked is fine: the launcher then starts bare, as before. */
+/** The one question setup asks: modes only (default) or MonoMode as the launcher; only the launcher needs the apps question. */
+@Composable
+private fun MainActivity.HomeChoice(scope: androidx.compose.foundation.layout.ColumnScope, launcher: Boolean, choose: (Boolean) -> Unit, home: MutableList<String>) = with(scope) {
+    Text(getString(R.string.onb_choice_title), style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+    Column(Modifier.selectableGroup()) {
+        for ((on, title, sub) in listOf(Triple(false, R.string.onb_modes_only, R.string.onb_modes_only_sub), Triple(true, R.string.onb_use_launcher, R.string.onb_use_launcher_sub))) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).selectable(launcher == on, role = Role.RadioButton) { choose(on) }, verticalAlignment = Alignment.CenterVertically) {
+                RadioButton(launcher == on, null); Spacer(Modifier.width(12.dp))
+                Column { Text(getString(title), style = MaterialTheme.typography.bodyLarge); Text(getString(sub), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            }
+        }
+    }
+    Text(getString(R.string.onb_modes_need), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+    if (launcher) HomeAppsPicker(scope, home)
+}
+
 @Composable
 private fun MainActivity.HomeAppsPicker(scope: androidx.compose.foundation.layout.ColumnScope, home: MutableList<String>) = with(scope) {
     Text(getString(R.string.onb_home_title), style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
