@@ -9,6 +9,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -22,11 +24,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
@@ -48,7 +52,10 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
@@ -81,11 +88,13 @@ internal fun MainActivity.Onboarding(onDone: () -> Unit) {
         HorizontalPager(pager, Modifier.weight(1f).fillMaxWidth(), userScrollEnabled = true) { page ->
             // only the visible page animates; the others restart when swiped back to
             val here = pager.currentPage == page
-            Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            // pages 2 and 3 are taller than a small phone: they scroll instead of clipping
+            val tall = if (page in 1..2) Modifier.verticalScroll(rememberScrollState()) else Modifier
+            Column(Modifier.fillMaxSize().then(tall), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 when (page) {
                     0 -> { QuietDemo(here); Blurb(R.string.onb_what_title, R.string.onb_what_body) }
-                    1 -> { ModeDemo(); Blurb(R.string.onb_modes_title, R.string.onb_modes_body) }
-                    2 -> { StepsDemo(here); Blurb(R.string.onb_how_title, R.string.onb_how_body) }
+                    1 -> ModeDemo()
+                    2 -> { StepsDemo(here); Blurb(R.string.onb_how_title, R.string.onb_how_body); DebugNote() }
                     else -> HomeChoice(this, launcher, { launcher = it }, home)
                 }
             }
@@ -106,6 +115,11 @@ internal fun MainActivity.Onboarding(onDone: () -> Unit) {
 @Composable
 private fun MainActivity.Blurb(title: Int, body: Int) {
     Text(getString(title), style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+    Body(body)
+}
+
+@Composable
+private fun MainActivity.Body(body: Int) {
     Text(getString(body), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
 }
 
@@ -130,21 +144,41 @@ private fun QuietDemo(running: Boolean) {
     }
 }
 
-/** Two modes as chips; the phone beside them changes the way the mode would. */
+/** Three chips; the phone and the text under it change to match the one picked. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun MainActivity.ModeDemo() {
-    var kiosk by remember { mutableStateOf(false) }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(!kiosk, { kiosk = false }, { Text(getString(R.string.onb_e_reader)) })
-        FilterChip(kiosk, { kiosk = true }, { Text(getString(R.string.onb_kiosk)) })
-    }
-    val bg by animateColorAsState(if (kiosk) Color(0xFF101010) else Color(0xFFEDEDED), label = "bg")
-    Box(Modifier.size(160.dp, 220.dp).clip(RoundedCornerShape(28.dp)).background(bg).padding(16.dp), contentAlignment = Alignment.Center) {
-        Crossfade(kiosk, label = "mode") { k ->
-            if (k) Box(Modifier.size(72.dp).clip(RoundedCornerShape(18.dp)).background(Color(0xFF00695F)))
-            else Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { repeat(6) { Box(Modifier.size(if (it == 5) 60.dp else 120.dp, 6.dp).clip(CircleShape).background(Color(0xFF777777))) } }
+    var pick by remember { mutableStateOf(0) }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
+        listOf(R.string.onb_e_reader, R.string.onb_kiosk, R.string.onb_launcher).forEachIndexed { i, s ->
+            FilterChip(pick == i, { pick = i }, { Text(getString(s)) })
         }
     }
+    val bg by animateColorAsState(if (pick == 1) Color(0xFF101010) else Color(0xFFEDEDED), label = "bg")
+    Box(Modifier.size(160.dp, 220.dp).clip(RoundedCornerShape(28.dp)).background(bg).padding(16.dp), contentAlignment = Alignment.Center) {
+        Crossfade(pick, label = "mode") { k ->
+            when (k) {
+                1 -> Box(Modifier.size(72.dp).clip(RoundedCornerShape(18.dp)).background(Color(0xFF00695F)))
+                2 -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    repeat(3) { r -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        repeat(3) { c -> Box(Modifier.size(32.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF8A9A98).copy(alpha = if ((r + c) % 2 == 0) 1f else 0.6f))) }
+                    } }
+                }
+                else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { repeat(6) { Box(Modifier.size(if (it == 5) 60.dp else 120.dp, 6.dp).clip(CircleShape).background(Color(0xFF777777))) } }
+            }
+        }
+    }
+    Text(getString(R.string.onb_modes_title), style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+    Crossfade(pick, Modifier.semantics { liveRegion = LiveRegionMode.Polite }, label = "body") {
+        Body(listOf(R.string.onb_body_e_reader, R.string.onb_body_kiosk, R.string.onb_body_launcher)[it])
+    }
+}
+
+/** Why Wireless debugging is in the picture, in one small card. */
+@Composable
+private fun MainActivity.DebugNote() {
+    Text(getString(R.string.onb_debug_body), Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceVariant).padding(16.dp),
+        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 /** Install, turn on, turn off: each lights up in turn, or when tapped. */

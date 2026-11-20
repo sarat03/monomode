@@ -318,10 +318,14 @@
     <string name="onb_kiosk">Kiosk</string>
     <string name="onb_what_title">Your phone, quieter</string>
     <string name="onb_what_body">MonoMode turns your phone into one calm thing: a distraction-free launcher, an e-reader, or a single-app kiosk. Tap the phone to see it.</string>
-    <string name="onb_modes_title">Pick a mode</string>
-    <string name="onb_modes_body">A mode changes the phone\'s settings for one purpose: grayscale and no animations for reading, or one pinned app for a kiosk.</string>
+    <string name="onb_launcher">Launcher</string>
+    <string name="onb_modes_title">Three ways to use it</string>
+    <string name="onb_body_e_reader">E-reader: grayscale and no animations, for a calm reading screen.</string>
+    <string name="onb_body_kiosk">Kiosk: one app pinned to the screen.</string>
+    <string name="onb_body_launcher">Launcher: an optional quiet home screen for every day. You choose its apps on the last page, and modes work without it.</string>
     <string name="onb_how_title">How it works</string>
     <string name="onb_how_body">Nothing is permanent. MonoMode remembers every setting it changes and puts each one back when you turn the mode off.</string>
+    <string name="onb_debug_body">Modes change settings through Android\'s own Wireless debugging, on this phone only. You pair once (Set up once). MonoMode turns Wireless debugging on only for the moment it needs it, then turns it off again.</string>
     <string name="onb_step_install">Install a mode</string>
     <string name="onb_step_on">Turn it on</string>
     <string name="onb_step_off">Turn it off: everything comes back</string>
