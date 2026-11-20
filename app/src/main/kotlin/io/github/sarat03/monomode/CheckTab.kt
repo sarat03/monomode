@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -38,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import monomode.engine.Finding
 import monomode.engine.Level
 import monomode.engine.label
+import monomode.engine.reportText
 import io.github.sarat03.monomode.MainActivity.Companion.ps
 
 @Composable
@@ -56,6 +58,9 @@ internal fun MainActivity.CheckTab() {
     }
     val (system, own) = (r ?: return).sortedBy { it.level }.partition { it.system }
     val (needs, fine) = own.partition { it.level == Level.LOOK }
+    OutlinedButton({
+        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, reportText(r, Records.newFindings)), null))
+    }, Modifier.heightIn(min = 48.dp)) { Text(getString(R.string.export_report)) }
     if (needs.isNotEmpty()) { Section(getString(R.string.needs_a_look)); needs.forEach { FindingCard(it) } }
     if (fine.isNotEmpty()) { if (fine.any { it.apps.isNotEmpty() }) Section(getString(R.string.using_the_internet)); fine.forEach { FindingCard(it) } }
     if (system.isNotEmpty()) {
@@ -79,7 +84,8 @@ internal fun MainActivity.FindingCard(f: Finding) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (f.apps.size == 1) AppIcon(f.apps.first())
                 if (f.level == Level.LOOK && !f.system) Icon(Icons.Outlined.Warning, null, Modifier.size(20.dp), tint = warnTone().fg)
-                Text(f.title, style = MaterialTheme.typography.titleMedium)
+                Text(f.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                if (f in Records.newFindings) Text(getString(R.string.new_since_last_check), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             }
             Text(f.detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (grouped) Text(getString(R.string.tap_to_see_all_1x, f.apps.size), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)

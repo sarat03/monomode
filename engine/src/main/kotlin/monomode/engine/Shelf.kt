@@ -8,6 +8,12 @@ import java.net.URLEncoder
 /** Where a book was left: [inChapter] and [progress] (of the whole book) are 0..1, [at] is when, in epoch milliseconds. */
 data class Place(val chapter: Int, val inChapter: Float, val progress: Float, val at: Long)
 
+/** A book's highlights as Markdown: the title, then each quote with [place] (a chapter name) and its note, if any. */
+fun exportQuotes(title: String, quotes: List<Quote>, place: (Quote) -> String): String =
+    "# $title\n" + quotes.joinToString("") { q ->
+        "\n" + q.text.lines().joinToString("\n") { "> $it" } + "\n\n" + "- " + place(q) + "\n" + (if (q.note.isEmpty()) "" else "- Note: ${q.note}\n")
+    }
+
 /** A bookmark: a place in a chapter (0..1), how far through the book that is, and the chapter's name to show in the list. */
 data class Mark(val chapter: Int, val inChapter: Float, val progress: Float, val label: String, val at: Long)
 

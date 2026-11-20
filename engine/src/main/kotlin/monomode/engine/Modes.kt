@@ -9,7 +9,7 @@ val BUILT_IN_READER = MODE_HOME.substringBefore('/')
  * Everything about the modes: which one is on, what the user chose for each, and turning them on
  * and off. The mode that is on is the one with a restore record in [dir], so it survives restarts.
  */
-class Modes(private val dir: File, private val store: Store) {
+class Modes(private val dir: File, private val store: Store, private val now: () -> Long = System::currentTimeMillis) {
     /** Where the per-mode choices live: SharedPreferences on the phone, a map in tests. */
     interface Store {
         fun strings(key: String): Set<String>
@@ -21,6 +21,12 @@ class Modes(private val dir: File, private val store: Store) {
     private fun record(p: Profile) = File(dir, "mode-${p.name}.txt")
 
     val active: Profile? get() = Profile.entries.firstOrNull { record(it).exists() }
+
+    private val held get() = active?.let { record(it).readLines().filter { l -> l.isNotBlank() } }.orEmpty()
+    /** When the mode that is on was applied; null for a record from before dates. */
+    val activeSince: Long? get() = held.firstOrNull()?.takeIf { it.startsWith("# ") }?.drop(2)?.toLongOrNull()
+    /** How many settings the mode that is on holds the old values of. */
+    val activeSettings: Int get() = held.count { !it.startsWith("#") }
 
     /** Modes the user installed from mode options; MonoMode starts as a launcher alone. The mode that is on always counts, so an update never hides it. */
     val installed: Set<Profile> get() = Profile.entries.filter { it.name in store.strings("installed") || it == active }.toSet()
@@ -46,7 +52,7 @@ class Modes(private val dir: File, private val store: Store) {
 
     fun turnOn(s: PhoneSettings, p: Profile) {
         check(active == null) { "turn off ${active!!.name.lowercase()} mode first" }
-        applyProfile(s, p, record(p), off(p))
+        applyProfile(s, p, record(p), off(p), now())
     }
 
     /** Puts back every setting of the mode that is on. Kiosk runs [unpin] first, or the pinned app would hide the restored home screen. */

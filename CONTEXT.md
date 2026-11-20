@@ -27,6 +27,7 @@ code, commits, issues and screen text. When a new term settles, add it here in t
 | **Risk** | `SAFE` (pre-selected), `CAUTION`, `RISKY`. Packages in `lists/protected.txt` are never offered. | `engine/Engine.kt` |
 | **Method** | `DISABLE` (`pm disable-user`) or `REMOVE` (`pm uninstall --user 0`). Both restorable. | `engine/Engine.kt` |
 | **Batch** | A few packages changed at once, then the **health check** (Home, dialer, keyboard still work). A failed check undoes the batch. | `Debloat` |
+| **History** | Everything MonoMode currently holds, apps and the mode that is on, with dates; Restore per item, Revert all. | `engine/History.kt`, `CleanupTab.kt` |
 | **Restore record** | Every change, so it can be undone; copied to `Downloads/MonoMode`. | `Records.kt` |
 
 ## Modes
@@ -52,6 +53,7 @@ code, commits, issues and screen text. When a new term settles, add it here in t
 | **BookFile** | One interface over every format: EPUB, TXT, HTML, FB2, CBZ, PDF. | `engine/BookFile.kt` |
 | **Shelf** | What the reader remembers per book: place, marks, quotes, look. Behind a `Store`. | `engine/Shelf.kt` |
 | **Place / Mark / Quote** | Where a book was left / a bookmark / a highlight with a note. | `engine/Shelf.kt` |
+| **Update check** | The opt-in, once-a-day ask to GitHub for the latest release; shows "Update available" and opens its page. Never downloads. | `engine/Update.kt`, `update/UpdateCheck.kt` |
 | **Tap** | What a tap zone does: `BACK`, `FORWARD`, `MENU`, `MARK`. | `engine/Tap.kt` |
 
 ## Words to avoid

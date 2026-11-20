@@ -1,5 +1,6 @@
 package io.github.sarat03.monomode
 
+import io.github.sarat03.monomode.update.UpdateCheck
 import android.content.Intent
 import android.os.Build
 import android.os.Environment
@@ -61,6 +62,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         installed = modes.installed
         Appearance.load(this)
+        UpdateCheck.load(this)
         // colour runs under the status and navigation bars, as on the home screen; content keeps clear with safeDrawingPadding
         enableEdgeToEdge()
         openPage(intent)
@@ -109,6 +111,7 @@ class MainActivity : ComponentActivity() {
         // Wireless debugging stays off: an action that needs it switches it on for itself. Already on (just paired):
         // connects once, which also finishes the setup by granting MonoMode its permission
         ph.refresh(paired)
+        UpdateCheck.auto(this, modes.active != null)
     }
 
     override fun onStop() {

@@ -146,6 +146,18 @@ class Phone(
         update { copy(activeMode = modes.active) }
     }
 
+    /** Every change MonoMode holds now, newest first; read from the records, so call it again after state changes. */
+    fun history() = History(debloat, modes).items()
+
+    /** Restores every app and the mode that is on; what fails stays held and is named. */
+    fun revertAll() = withSettings("Reverting everything…") { s, shell ->
+        val failed = try {
+            History(debloat, modes).revertAll(shell, s) { if (pinned()) unpin(shell()) }
+        } finally { runCatching { saveCopy(debloat.record) } }
+        val sc = link?.let { rescan(it) } ?: state.scan
+        update { copy(removed = debloat.removed, activeMode = modes.active, scan = sc, message = if (failed.isEmpty()) null else "Could not restore: ${failed.joinToString { it.id }}. They stay in the history; try again.") }
+    }
+
     /** Pins [component] and switches Wireless debugging off: pinning hides MonoMode, so nothing else can follow. Also "Pin again" after an unpin. */
     fun pin(component: String, label: String) = withLink("Pinning $label and switching off Wireless debugging…") { l -> pinAndFinish(l, component, label) }
 
