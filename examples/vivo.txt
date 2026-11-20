@@ -1,0 +1,9 @@
+# Vivo / iQOO (Funtouch OS, OriginOS 13-15)
+# UNVERIFIED starter list: taken from a community debloat guide, not yet checked on a phone.
+# Verify each package on your own phone first (pm list packages | grep <name>); the dry run and restore guard mistakes.
+com.vivo.appstore|caution         # V-Appstore
+com.bbk.theme|caution             # iTheme
+com.bbk.cloud|caution             # Vivo Cloud
+com.vivo.browser|caution          # Browser
+com.vivo.globalgame|caution       # Game Center
+com.vivo.motormode                # Motorbike mode

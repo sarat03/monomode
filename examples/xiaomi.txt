@@ -1,0 +1,12 @@
+# Xiaomi / POCO / Redmi (MIUI 14, HyperOS 1-2)
+# UNVERIFIED starter list: taken from a community debloat guide, not yet checked on a phone.
+# Verify each package on your own phone first (pm list packages | grep <name>); the dry run and restore guard mistakes.
+com.miui.msa.global|caution       # System ads
+com.miui.analytics|caution        # Analytics
+com.miui.daemon|risky             # Background daemon
+com.xiaomi.joyose|risky           # Game throttling and telemetry
+com.miui.bugreport|caution        # Bug reporter
+com.xiaomi.mipicks|caution        # GetApps store
+com.miui.cloudservice|caution     # Mi Cloud sync
+com.mipay.wallet.in|caution       # Mi Pay
+com.mi.globalbrowser|caution      # Mi Browser

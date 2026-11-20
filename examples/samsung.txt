@@ -1,0 +1,17 @@
+# Samsung (One UI 5-7)
+# UNVERIFIED starter list: taken from a community debloat guide, not yet checked on a phone.
+# Verify each package on your own phone first (pm list packages | grep <name>); the dry run and restore guard mistakes.
+com.samsung.android.bixby.agent|caution      # Bixby Voice
+com.samsung.android.bixby.wakeup|caution     # Bixby wake word
+com.samsung.android.visionintelligence|caution # Bixby Vision
+com.samsung.android.bixby.routines|caution   # Bixby Routines
+com.samsung.android.aremoji                  # AR Emoji
+com.samsung.android.aremojieditor            # AR Emoji editor
+com.sec.android.mimage.avatarstickers        # Avatar stickers
+com.samsung.android.rubin.app|caution        # Customization Service
+com.sec.android.app.kidshome                 # Samsung Kids
+com.samsung.android.app.spage                # Samsung Free
+com.samsung.android.game.gamehome            # Game Launcher
+com.samsung.android.game.gos|risky           # Game Optimizing Service, can change performance
+com.sec.android.diagmonagent|caution         # Diagnostic monitoring
+com.samsung.android.beaconmanager|caution    # Beacon manager

@@ -18,6 +18,17 @@ class DebloatTest {
         assertTrue("com.user.app" in s.others && "io.me" !in s.others && "com.bloat.a" !in s.others)
     }
 
+    @Test fun `every starter list loads and holds nothing from the protected list`() {
+        val protected = File("../lists/protected.txt").readLines().map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        val lists = File("../examples").listFiles { f -> f.extension == "txt" }.orEmpty()
+        assertTrue(lists.size >= 5, "starter lists missing")
+        for (f in lists) {
+            val entries = parseList(f.readText())
+            assertTrue(entries.isNotEmpty(), "${f.name} is empty")
+            assertEquals(emptyList(), entries.map { it.pkg }.filter { it in protected }, "${f.name} lists a protected package")
+            assertEquals(entries.size, entries.map { it.pkg }.toSet().size, "${f.name} repeats a package")
+        }
+    }
     @Test fun `removed apps are listed until restored, one at a time`() {
         debloat.remove(sh, listOf("com.bloat.a", "com.bloat.b"), Method.DISABLE)
         assertEquals(mapOf("com.bloat.a" to Method.DISABLE, "com.bloat.b" to Method.DISABLE), debloat.removed)

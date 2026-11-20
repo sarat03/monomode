@@ -33,7 +33,7 @@ Template for a new section:
 
 ## App cleaner (2026-10-22)
 **What:** disable or uninstall unused apps in checked batches, and restore any of them.
-**Where:** `engine/Engine.kt` (`Debloat`, `apply`, `restore`, drift), `Records.kt`, `CleanupTab.kt`, lists in `examples/` and `lists/`; `cli.py`/`core.py` do the same over USB for Android 7-10.
+**Where:** `engine/Engine.kt` (`Debloat`, `apply`, `restore`, drift), `Records.kt`, `CleanupTab.kt`, lists in `examples/` (generic plus Samsung, Xiaomi, Oppo/realme/OnePlus, Vivo, Motorola: **unverified**, from a community guide, each package still to be checked on a real phone of that brand; `DebloatTest` checks they load and avoid `lists/protected.txt`) and `lists/`; `cli.py`/`core.py` do the same over USB for Android 7-10.
 **Decisions:** batches of five with a health check and rollback, user 0 only, Remove only for built-in apps, record written as each change applies (ADR 0008). Lists ship in the app (ADR 0002).
 **Tested by:** `EngineTest`, `DebloatTest`, `RealAdbdDebloatTest`; `test_core.py` for the CLI.
 
