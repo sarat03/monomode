@@ -198,6 +198,7 @@
     <string name="no_matches">No matches.</string>
     <string name="go_there">Go there</string>
     <string name="highlight">Highlight</string>
+    <string name="export_highlights">Export highlights</string>
     <string name="highlights">Highlights</string>
     <string name="no_highlights_yet">No highlights yet. Hold a finger on a word, adjust the selection, then choose Highlight.</string>
     <string name="note">Note</string>
