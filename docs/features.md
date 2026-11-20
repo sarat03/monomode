@@ -69,6 +69,12 @@ Template for a new section:
 **Layout (2026-11-17):** pages are `column-count` columns (1, or 2 on wide screens) with equal side padding, and the book's own html/body width, max-width and offsets are overridden so the text stays centred; the chosen font applies to every descendant, and wide tables and code are kept inside their column. A page turn moves by the page's measured width (the html box times the device pixel ratio, a fraction, rounded per page), not the view's width: Chromium rounds the WebView's CSS width up, so on a 1080 px, 2.625 density screen a page is 1082 px and turning by 1080 drifted the text 2 px right on every page. A 1 px end mark after the last page lets the last page (which lacks its right margin, or is one column of two) scroll fully into place, and the page count comes from the page's script, not the scroll range, which learns of the mark late. The library has a compact 40dp search field with the sort and view menu beside it, under the title line.
 **Open:** `Reader.kt` (about 1,100 lines) is to be split (`docs/architecture-plan.md` §4); review items at the end of the handoff.
 
+## Update check (2026-11-19, #46)
+**What:** an opt-in (off by default) check of GitHub's latest release, with a button that opens the release page. Settings > Updates: automatic check (at most daily, never while a mode is on), Check now, last checked, result. No download or install code (option 1 of #46).
+**Where:** `engine/Update.kt` (parse the feed, compare versions, vet the page URL), `app/update/UpdateCheck.kt` (the one HTTPS GET), `SettingsPage.kt`, `MainActivity.onResume` (automatic check).
+**Decisions:** ADR 0010 narrows ADR 0002; the CI network guard allows `update/UpdateCheck.kt`. Options 2 and 3 of #46 are not built (reasons in ADR 0010).
+**Tested by:** `UpdateTest` (fake feed, malformed input, version compare). The network call and Settings rows are not tested on a device.
+
 ## Release (2026-11-05, #15)
 **What:** pushing a version tag builds a signed APK on GitHub Releases.
 **Where:** `.github/workflows/release.yml`, `docs/release.md`.

@@ -29,7 +29,9 @@ Each argument must match `^[A-Za-z0-9._/:=,@+-]+$`, so nothing reaches `sh` that
   `^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$`. Packages in `lists/protected.txt` are never offered.
 - **No network beyond the phone.** `INTERNET` is declared only because Android needs it for the loopback adb
   sockets. Sockets are opened only in `Session.kt` and `app/tls/`; CI fails on a socket, URL or HTTP client
-  anywhere else (`test.yml`).
+  anywhere else (`test.yml`). The one exception is the opt-in update check (off by default, ADR 0010): a single
+  HTTPS GET of the latest release from `api.github.com`, in `update/UpdateCheck.kt` only. It sends no account or
+  identifier and downloads nothing.
 - **Broad permissions, used locally:** `QUERY_ALL_PACKAGES` (app names), `WRITE_SECURE_SETTINGS` (granted by
   MonoMode to itself, for modes and switching Wireless debugging), `MANAGE_EXTERNAL_STORAGE` (E-reader, off
   until allowed in Settings), `ACCESS_NOTIFICATION_POLICY` (Do Not Disturb). Nothing leaves the phone.
