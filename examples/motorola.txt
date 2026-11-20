@@ -1,0 +1,10 @@
+# Motorola (My UX, Hello UI)
+# UNVERIFIED starter list: taken from a community debloat guide, not yet checked on a phone.
+# Verify each package on your own phone first (pm list packages | grep <name>); the dry run and restore guard mistakes.
+com.dti.motorola|caution          # Mobile Services / Ignite, installs carrier apps
+com.motorola.motocare|caution     # Moto Care
+com.motorola.brapps|caution       # App suggestions
+com.motorola.demo|caution         # Retail demo mode
+com.motorola.help.extlog|caution  # Extended logging
+com.motorola.gamemode|caution     # Moto Gametime
+com.inmobi.weather                # Ad-supported weather app
