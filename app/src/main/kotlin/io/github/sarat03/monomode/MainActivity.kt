@@ -21,14 +21,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import monomode.engine.Profile
 import monomode.engine.Allowed
+import monomode.engine.Need
 import monomode.engine.Phone
 import monomode.engine.PhoneState
+import monomode.engine.firstAsk
 import monomode.engine.label
 
 
 /** The pages Home leads to; [EXTRA] in an intent opens one directly. */
 object Page {
     const val EXTRA = "page"
+    /** With [MODES]: the mode (Profile name) whose page opens, and whose Need prompt shows when it has one. */
+    const val MODE = "mode"
     const val HOME = 0; const val CHECK = 1; const val CLEAN = 2; const val MODES = 3; const val SETTINGS = 4
 }
 
@@ -51,15 +55,7 @@ class MainActivity : ComponentActivity() {
 
     internal val modes by lazy { Records.modes(applicationContext) }
     /** Process-wide, like the state above: an open session must survive the activity being recreated (battery saver turns on dark theme). */
-    internal val ph: Phone get() = phone ?: applicationContext.let { app ->
-        Phone(
-            open = { Session.open(app) }, debloat = Records.debloater(app), modes = Records.modes(app),
-            wirelessOn = { Session.isWirelessDebuggingOn(app) }, saveCopy = { Records.copyToDownloads(app, it) }, onChange = { ps = it },
-            switchOff = { if (Session.canSwitch(app)) Session.switch(app, false) },
-            local = AppSettings(app), pinned = { pinned(app) }, paired = { Pairing.isPaired(app) }, switchOn = { Session.canSwitch(app) && Session.switch(app, true) },
-            lister = AppPackages(app),
-        ).also { phone = it }
-    }
+    internal val ph: Phone get() = phoneOf(applicationContext)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -77,7 +73,16 @@ class MainActivity : ComponentActivity() {
     }
 
     // from a mode home screen: open the mode that is on, or Home when none is
-    internal fun openPage(i: Intent?) { i?.getIntExtra(Page.EXTRA, -1)?.takeIf { it >= 0 }?.let { tab = it; if (it == Page.MODES) openMode = modes.active } }
+    internal fun openPage(i: Intent?) { i?.getIntExtra(Page.EXTRA, -1)?.takeIf { it >= 0 }?.let { tab = it; if (it == Page.MODES) openMode = modes.active }
+        i?.getStringExtra(Page.MODE)?.let { Profile.valueOf(it) }?.let { p ->
+            openMode = p
+            if (p in modes.installed) when (p.firstAsk(modes.off(p), Allowed(Session.canSwitch(this), dndAccess(this)))) {
+                Need.SETUP_ONCE -> ph.askSetup()
+                Need.DND_ACCESS -> askDnd()
+                null -> Unit
+            }
+        }
+    }
 
     /** Set by "Enter e-reader": open the reader as soon as the mode is on. */
     internal var entering = false

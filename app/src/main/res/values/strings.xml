@@ -297,4 +297,8 @@
     <string name="cleaner_uses_wireless_debugging_to_change">Listing apps needs nothing; removing or disabling uses Wireless debugging for a moment, and MonoMode turns it on and off.</string>
     <string name="pinning_switches_off_wireless_debugging">Pinning also switches off Wireless debugging.</string>
     <string name="app_to_pin">App to pin</string>
+    <string name="tile_kiosk">Kiosk</string>
+    <string name="tile_e_reader">E-reader</string>
+    <string name="tile_on">On</string>
+    <string name="tile_off">Off</string>
 </resources>

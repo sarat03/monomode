@@ -39,8 +39,8 @@ Template for a new section:
 
 ## Modes: Kiosk and E-reader (2026-10-22, last changed 2026-11-14)
 **What:** one switch per job that changes a few settings and puts the user's own back exactly when turned off, each with its own home screen.
-**Where:** `engine/Profile.kt` (profiles, `Change`, the `PhoneSettings` port), `engine/Modes.kt`, `engine/Needs.kt`, `engine/Pin.kt`, `AppSettings.kt`, `ModePage.kt`, `HomeActivity.kt`.
-**Decisions:** screen pinning, not device owner (ADR 0004). What a mode needs first is decided in the engine, not in the page (ADR 0006). Settings go through Android's own APIs where allowed, adb otherwise. Modes are installed from mode options; MonoMode starts as a launcher alone.
+**Where:** `engine/Profile.kt` (profiles, `Change`, the `PhoneSettings` port), `engine/Modes.kt`, `engine/Needs.kt`, `engine/Pin.kt`, `AppSettings.kt`, `ModePage.kt`, `HomeActivity.kt`, `ModeTile.kt` (Quick Settings tile per mode).
+**Decisions:** screen pinning, not device owner (ADR 0004). What a mode needs first is decided in the engine, not in the page (ADR 0006). Settings go through Android's own APIs where allowed, adb otherwise. Modes are installed from mode options; MonoMode starts as a launcher alone. A Quick Settings tile per mode turns it off, or on when nothing is needed first, through the same `Phone`; when it needs setup, Do Not Disturb access, an app to pin (Kiosk) or install, or an action ends with a message, it opens the app on that mode's page with the same prompt.
 **Tested by:** `ProfileTest`, `ModesTest`, `NeedsTest`, `PhoneSettingsTest`, `PinTest`, `RealAdbdProfileTest`, `RealAdbdGrantTest`; mode home screens by the Compose tests in `HomeTest.kt`.
 **Open:** realme gesture navigation lets a swipe leave Kiosk; Pin an app is the strict option.
 

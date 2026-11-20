@@ -74,5 +74,26 @@
             </intent-filter>
         </activity>
         <receiver android:name=".Pairing$PairReceiver" android:exported="false" />
+        <!-- Quick Settings tile per mode -->
+        <service
+            android:name=".KioskTile"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_monochrome"
+            android:label="@string/tile_kiosk"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+        <service
+            android:name=".EReaderTile"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_monochrome"
+            android:label="@string/tile_e_reader"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>
