@@ -104,21 +104,28 @@ enum class Method(
     REMOVE({ listOf("pm", "uninstall", "-k", "--user", "0", it) }, { listOf("cmd", "package", "install-existing", it) }, " removed"),
 }
 
-/** What MonoMode uninstalled or disabled, and how. Record: one line per package, `pkg` (disabled) or `pkg removed`, sorted. */
-internal fun recorded(record: File): Map<String, Method> =
-    if (!record.exists()) emptyMap() else record.readLines().map { it.trim() }.filter { it.isNotEmpty() }.associate { line ->
-        line.substringBefore(" ") to if (line.endsWith(Method.REMOVE.tag)) Method.REMOVE else Method.DISABLE
-    }
+/** What MonoMode uninstalled or disabled, and how. Record: one line per package, `pkg` (disabled) or `pkg removed`, then ` @<millis>` when it was done; sorted. */
+internal fun recorded(record: File): Map<String, Method> = recordLines(record).associate { line ->
+    line.substringBefore(" ") to if (line.substringBefore(" @").endsWith(Method.REMOVE.tag)) Method.REMOVE else Method.DISABLE
+}
+
+/** When each package was recorded; records from before dates have none. */
+internal fun recordedAt(record: File): Map<String, Long> =
+    recordLines(record).mapNotNull { line -> line.substringAfter(" @", "").toLongOrNull()?.let { line.substringBefore(" ") to it } }.toMap()
+
+private fun recordLines(record: File) = if (!record.exists()) emptyList() else record.readLines().map { it.trim() }.filter { it.isNotEmpty() }
 
 /** Writes and flushes to disk, so the rename that follows never exposes an empty file after a power cut. */
 internal fun File.writeSynced(text: String) = java.io.FileOutputStream(this).use { it.write(text.toByteArray()); it.fd.sync() }
 
 /** Deletes the record once nothing is left in it. */
-private fun writeRecord(record: File, entries: Map<String, Method>) {
+private fun writeRecord(record: File, entries: Map<String, Method>, now: () -> Long = System::currentTimeMillis) {
     if (entries.isEmpty()) { record.delete(); return }
+    // a package already in the record keeps its date (or none); only a new one is dated now
+    val known = recorded(record).keys; val at = recordedAt(record)
     record.parentFile?.mkdirs()
     val tmp = File(record.path + ".tmp")
-    tmp.writeSynced(entries.toSortedMap().entries.joinToString("") { (pkg, m) -> "$pkg${m.tag}\n" })
+    tmp.writeSynced(entries.toSortedMap().entries.joinToString("") { (pkg, m) -> "$pkg${m.tag}${(at[pkg] ?: if (pkg in known) null else now())?.let { " @$it" }.orEmpty()}\n" })
     check(tmp.renameTo(record)) { "could not write $record" }
 }
 
@@ -126,7 +133,7 @@ private fun writeRecord(record: File, entries: Map<String, Method>) {
  * Disables (or removes for user 0) in small batches; after each, reads state back and checks health.
  * A batch that fails or breaks Home/dialer/keyboard is undone and apply stops.
  */
-fun apply(sh: Shell, p: Plan, record: File, batch: Int = 5, method: Method = Method.DISABLE) {
+fun apply(sh: Shell, p: Plan, record: File, batch: Int = 5, method: Method = Method.DISABLE, now: () -> Long = System::currentTimeMillis) {
     if (method == Method.REMOVE) {
         // only a built-in app's apk survives pm uninstall --user 0; a Play Store app's is deleted and cannot be restored
         val notBuiltIn = p.todo - sh.pkgs("-s")
@@ -136,7 +143,7 @@ fun apply(sh: Shell, p: Plan, record: File, batch: Int = 5, method: Method = Met
     for (chunk in p.todo.chunked(batch)) {
         try {
             // recorded as soon as it is applied, so an app the undo cannot reach (connection lost) stays on the Restore list
-            for (pkg in chunk) { sh.run(method.apply(pkg)); done[pkg] = method; writeRecord(record, done) }
+            for (pkg in chunk) { sh.run(method.apply(pkg)); done[pkg] = method; writeRecord(record, done, now) }
             val ok = when (method) {
                 Method.DISABLE -> sh.pkgs("-d").containsAll(chunk)
                 Method.REMOVE -> sh.pkgs().none { it in chunk }
@@ -170,7 +177,7 @@ internal fun otherApps(sh: Shell, listed: Set<String>, self: String): List<Strin
 private fun isOverlay(pkg: String) = "overlay" in pkg.lowercase() || pkg.startsWith("com.android.theme.") || pkg.startsWith("com.android.internal.")
 
 /** One phone's debloat: what can go, removing in checked batches, and the restore record in [record]. */
-class Debloat(val record: File) {
+class Debloat(val record: File, private val now: () -> Long = System::currentTimeMillis) {
     /** [plan] of the curated list (any risk; the owner decides), the built-in apps, and every other app but [self]. */
     data class Scan(val plan: Plan, val system: Set<String>, val others: List<String>)
 
@@ -180,7 +187,10 @@ class Debloat(val record: File) {
     /** What is uninstalled or disabled now, and how. */
     val removed: Map<String, Method> get() = recorded(record)
 
-    fun remove(sh: Shell, pkgs: List<String>, method: Method) { apply(sh, Plan(todo = pkgs), record, method = method) }
+    /** When each of [removed] was done, in milliseconds; none for one recorded before dates. */
+    val since: Map<String, Long> get() = recordedAt(record)
+
+    fun remove(sh: Shell, pkgs: List<String>, method: Method) { apply(sh, Plan(todo = pkgs), record, method = method, now = now) }
 
     fun restore(sh: Shell, only: Set<String>) = restore(sh, record, only)
 }

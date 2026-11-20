@@ -107,14 +107,14 @@ private fun PhoneSettings.set(c: Change, value: String) = check(write(c, value))
  * Options named in [off] are skipped. Saves every previous value to [record] first, then applies. Refuses while a profile is
  * already applied, because saving again would overwrite the original values with the profile's.
  */
-fun applyProfile(s: PhoneSettings, profile: Profile, record: File, off: Set<String> = emptySet()) {
+fun applyProfile(s: PhoneSettings, profile: Profile, record: File, off: Set<String> = emptySet(), now: Long = System.currentTimeMillis()) {
     check(!record.exists()) { "a profile is already applied; restore it first" }
     val chosen = profile.always + profile.options.filterKeys { it !in off }.values.flatten() + profile.whenOff.filterKeys { it in off }.values.flatten()
     // a value with a line break would forge extra lines in the record: leave that setting alone, neither changed nor restored
     val previous = chosen.map { it to s.get(it) }.filter { (_, v) -> '\n' !in v && '\r' !in v }
     record.parentFile?.mkdirs()
     val tmp = File(record.path + ".tmp")
-    tmp.writeSynced(previous.joinToString("") { (c, v) -> "${c.ns} ${c.key} $v\n" })
+    tmp.writeSynced("# $now\n" + previous.joinToString("") { (c, v) -> "${c.ns} ${c.key} $v\n" })
     check(tmp.renameTo(record)) { "could not write $record" }
     val done = mutableListOf<Pair<Change, String>>()
     try {
