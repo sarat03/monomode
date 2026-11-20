@@ -43,7 +43,7 @@
             </intent-filter>
         </activity>
         <!-- configChanges: turning the phone must not close the open book; the screens lay themselves out again -->
-        <!-- home screen while a mode sets it with set-home-activity, or always if the user picks it as their launcher; launchMode keeps one copy; own affinity so
+        <!-- home screen only if the user picks MonoMode as their launcher (no mode sets it); launchMode keeps one copy; own affinity so
              MonoMode opened from it gets its own task, which Home does not clear (that ended the session) -->
         <activity
             android:name=".HomeActivity"
