@@ -18,4 +18,10 @@ jobs:
         run: |
           ! grep -rnE 'java\.net\.(Socket|ServerSocket|DatagramSocket|MulticastSocket|URL|HttpURLConnection)\b|javax\.net\.ssl\.HttpsURLConnection|java\.nio\.channels\.(Socket|DatagramSocket)Channel|okhttp3|io\.ktor|retrofit2' \
               --include='*.kt' adb/src/main engine/src/main app/src/main \
-            | grep -vE '^app/src/main/kotlin/io/github/sarat03/monomode/(Session\.kt|tls/|update/UpdateCheck\.kt)'
+            | grep -vE '^app/src/main/kotlin/io/github/sarat03/monomode/(Session\.kt:|tls/|update/UpdateCheck\.kt:)'
+      # ADR 0010: the one URL literal, and no redirects, in the update check
+      - name: Update check has one URL and no redirects
+        run: |
+          f=app/src/main/kotlin/io/github/sarat03/monomode/update/UpdateCheck.kt
+          [ "$(grep -c 'https://' "$f")" -eq 1 ]
+          grep -q 'instanceFollowRedirects = false' "$f"

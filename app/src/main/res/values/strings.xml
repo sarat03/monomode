@@ -52,7 +52,7 @@
     <string name="about">About</string>
     <string name="updates">Updates</string>
     <string name="check_for_updates_automatically">Check for updates automatically</string>
-    <string name="update_check_note">Once a day, never while a mode is on. Asks api.github.com for the latest release and sends nothing else. Nothing is downloaded.</string>
+    <string name="update_check_note">Once a day, never while a mode is on. Asks api.github.com for the latest release, so GitHub sees your IP address and that MonoMode asked. Nothing is downloaded.</string>
     <string name="check_now">Check now</string>
     <string name="checking">Checking…</string>
     <string name="last_checked">Last checked: %1$s</string>

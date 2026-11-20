@@ -7,7 +7,7 @@ import android.net.Uri
 import java.text.DateFormat
 import java.util.Date
 import io.github.sarat03.monomode.update.UpdateCheck
-import monomode.engine.opensIn
+import monomode.engine.page
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.Switch
 import android.provider.Settings
@@ -63,7 +63,7 @@ internal fun MainActivity.SettingsPage() {
     Section(getString(R.string.backups))
     SettingRow(getString(R.string.restore_lists), getString(R.string.a_copy_of_what_was))
     Section(getString(R.string.updates))
-    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).toggleable(UpdateCheck.enabled, role = Role.Switch) { UpdateCheck.enable(applicationContext, it) }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).toggleable(UpdateCheck.enabled, role = Role.Switch) { UpdateCheck.enable(applicationContext, it); if (it && modes.active == null) UpdateCheck.check(applicationContext) }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(Modifier.weight(1f)) {
             Text(getString(R.string.check_for_updates_automatically), style = MaterialTheme.typography.bodyLarge)
             Text(getString(R.string.update_check_note), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -83,9 +83,9 @@ internal fun MainActivity.SettingsPage() {
     ).filter { it.isNotEmpty() }.joinToString("\n")) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton({ UpdateCheck.check(applicationContext) }, enabled = !UpdateCheck.checking) { Text(getString(R.string.check_now)) }
-            // only an https release page of this repo is opened; anything else in the feed is dropped
-            if (UpdateCheck.result == UpdateCheck.Result.AVAILABLE && found != null && found.opensIn(UpdateCheck.REPO))
-                OutlinedButton({ runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(found.url))) } }) { Text(getString(R.string.open_release_page)) }
+            // the page URL is built here from the validated tag; the feed's own URL is never used
+            if (UpdateCheck.result == UpdateCheck.Result.AVAILABLE && found != null)
+                OutlinedButton({ runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(found.page(UpdateCheck.REPO)))) } }) { Text(getString(R.string.open_release_page)) }
         }
     }
     Section(getString(R.string.about))

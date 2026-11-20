@@ -30,7 +30,7 @@ To list the books on your phone, the library asks for *All files access*. It onl
 
 ## Updates
 
-Settings > Updates has an opt-in check (off by default): it asks `api.github.com` once a day, never while a mode is on, whether a newer release exists, and opens the release page in your browser. It downloads and installs nothing. You can also follow the GitHub Releases page with an update tracker such as Obtainium.
+Settings > Updates has an opt-in check (off by default): it asks `api.github.com` once a day, never while a mode is on, whether a newer release exists (GitHub sees your IP address and that MonoMode asked), and can open the release page in your browser. It downloads and installs nothing. You can also follow the GitHub Releases page with an update tracker such as Obtainium.
 
 Some phones (realme, Oppo, Xiaomi) block settings changes from Wireless debugging until you turn on *Disable permission monitoring* or *USB debugging (Security settings)* in Developer options; MonoMode tells you when that happens.
 

@@ -14,8 +14,8 @@ class UpdateTest {
          "assets":[{"name":"a \"b\".apk","tag_name":"nested"}]$extra}
     """.trimIndent()
 
-    @Test fun `reads the tag and the release page from the top level only`() {
-        assertEquals(Release("v0.1.2", "https://github.com/sarat03/monomode/releases/tag/v0.1.2"), parseRelease(feed()))
+    @Test fun `reads the tag from the top level only`() {
+        assertEquals(Release("v0.1.2"), parseRelease(feed()))
     }
 
     @Test fun `a draft or a prerelease is ignored`() {
@@ -24,12 +24,12 @@ class UpdateTest {
     }
 
     @Test fun `malformed feeds give null, not a crash`() {
-        for (bad in listOf("", "{", "[]", "null", "not json", "{\"tag_name\":\"v1\"}", "{\"tag_name\":\"v1\",\"html_url\":", "{\"tag_name\":\"v1\",\"html_url\":\"https://x", "{\"a\":[{\"b\":"))
+        for (bad in listOf("", "{", "[]", "null", "not json", "{\"tag_name\":", "{\"tag_name\":\"v1", "{\"a\":[{\"b\":"))
             assertNull(parseRelease(bad), bad)
     }
 
     @Test fun `newer means a higher number, a leading v is ignored`() {
-        fun newer(cur: String, tag: String) = isNewer(cur, Release(tag, ""))
+        fun newer(cur: String, tag: String) = isNewer(cur, Release(tag))
         assertTrue(newer("0.1.0", "v0.1.2"))
         assertTrue(newer("0.1.9", "0.2"))
         assertTrue(newer("0.9.0", "v0.10.0"))
@@ -41,16 +41,22 @@ class UpdateTest {
 
     @Test fun `a malformed version is never newer`() {
         for (tag in listOf("", "v", "latest", "v1..2", "v1.x", "v1.2-beta", "99999999999999999999"))
-            assertFalse(isNewer("0.1.0", Release(tag, "")), tag)
-        assertFalse(isNewer("", Release("v1.0.0", "")))
-        assertFalse(isNewer("dev", Release("v1.0.0", "")))
+            assertFalse(isNewer("0.1.0", Release(tag)), tag)
+        assertFalse(isNewer("", Release("v1.0.0")))
+        assertFalse(isNewer("dev", Release("v1.0.0")))
     }
 
-    @Test fun `only a releases page of this repo may be opened`() {
-        val repo = "sarat03/monomode"
-        assertTrue(Release("v1", "https://github.com/sarat03/monomode/releases/tag/v1").opensIn(repo))
-        for (u in listOf("http://github.com/sarat03/monomode/releases/tag/v1", "https://github.com/sarat03/monomode", "https://evil.com/sarat03/monomode/releases/x",
-            "https://github.com.evil.com/sarat03/monomode/releases/x", "https://github.com/sarat03/monomode/releases/../../x", "https://github.com/sarat03/monomode-evil/releases/x", ""))
-            assertFalse(Release("v1", u).opensIn(repo), u)
+    @Test fun `the release page is built from the tag, never taken from the feed`() {
+        val r = parseRelease(feed("v1.2.3").replace("https://github.com/sarat03/monomode/releases/tag/v1.2.3", "https://evil.com/x"))
+        assertEquals("https://github.com/sarat03/monomode/releases/tag/v1.2.3", r?.page("sarat03/monomode"))
+    }
+
+    @Test fun `a tag that is not v-digits-dots never yields a release or a url`() {
+        for (tag in listOf("v1/../x", "..", "v1.2/..", "v1%2e%2e", "%2e%2e", "v1\\u002e2", "v1\tx", "v1\\n", "v1\n", "v1.2\n", "v1/2", "/v1", "v1.", "v1..2", "v", "", " v1", "v١"))
+            assertNull(releaseOf(tag), tag)
+        assertNull(parseRelease(feed("v1/../x")))
+        assertNull(parseRelease(feed("v1%2e%2e")))
+        assertNull(parseRelease("{\"tag_name\":\"v1\\n\"}"))
+        assertEquals(Release("1.2"), releaseOf("1.2"))
     }
 }

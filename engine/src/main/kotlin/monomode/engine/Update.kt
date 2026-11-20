@@ -1,14 +1,22 @@
 package monomode.engine
 
-/** The newest release: its tag (like "v0.1.2") and its page on GitHub. Pure; the one network call is in the app (ADR 0010). */
-data class Release(val tag: String, val url: String)
+/** The newest release's tag (like "v0.1.2"). Pure; the one network call is in the app (ADR 0010). */
+data class Release(val tag: String)
 
-/** The release from GitHub's latest-release JSON, or null for a draft, a prerelease or anything malformed. */
+private val TAG = Regex("v?[0-9]+(\\.[0-9]+)*")
+
+/** The release from GitHub's latest-release JSON, or null for a draft, a prerelease, a malformed feed or a tag that is not v?digits(.digits)*. */
 fun parseRelease(json: String): Release? {
     val top = topLevel(json) ?: return null
     if (top["draft"] == "true" || top["prerelease"] == "true") return null
-    return Release(top["tag_name"]?.takeIf { it.isNotBlank() } ?: return null, top["html_url"]?.takeIf { it.isNotBlank() } ?: return null)
+    return releaseOf(top["tag_name"] ?: return null)
 }
+
+/** The release for a tag, or null unless the whole tag matches v?digits(.digits)*; the page URL is only ever built from such a tag. */
+fun releaseOf(tag: String): Release? = if (TAG.matches(tag)) Release(tag) else null
+
+/** This repo's page for the release, built here; the feed's own html_url is never used. */
+fun Release.page(repo: String) = "https://github.com/$repo/releases/tag/$tag"
 
 /** True when the release's number is higher than [current]'s (versionName). Same, older or malformed is false. */
 fun isNewer(current: String, release: Release): Boolean {
@@ -21,9 +29,6 @@ fun isNewer(current: String, release: Release): Boolean {
     }
     return false
 }
-
-/** The page may be opened in the browser: https on github.com, under this repo's releases, no path tricks. */
-fun Release.opensIn(repo: String) = url.startsWith("https://github.com/$repo/releases/") && ".." !in url
 
 private fun numbers(v: String): List<Int>? =
     v.removePrefix("v").removePrefix("V").split(".").map { p -> if (p.isNotEmpty() && p.all { it in '0'..'9' }) p.toIntOrNull() ?: return null else return null }
