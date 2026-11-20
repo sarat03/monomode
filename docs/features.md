@@ -29,13 +29,14 @@ Template for a new section:
 **What:** a read-only report of what uses the internet and what can reach or control the phone.
 **Where:** `engine/Network.kt` (`/proc/net`), `engine/Access.kt`, `engine/Findings.kt`; `DeviceChecks.kt` reads device admins, certificates and VPN in the app; `CheckTab.kt` draws.
 **Decisions:** findings are `LOOK` or `INFO`, never a verdict. Built-in apps go under a drop-down: their access is usually how Android works.
+**Since last check:** the app keeps the last findings (`Records.rememberCheck`, own SharedPreferences file) and tags findings new since then with "New", matched by level and title because details change (`newSince`; the first check tags nothing). "Share report as text" sends `reportText` through the share sheet; nothing is uploaded by the app.
 **Tested by:** `NetworkTest`, `AccessTest`, `FindingsTest`; `DeviceChecksTest` and `RealAdbdExposureTest` on a device.
 
-## App cleaner (2026-10-22)
+## App cleaner (2026-10-22, last changed 2026-11-19)
 **What:** disable or uninstall unused apps in checked batches, and restore any of them.
-**Where:** `engine/Engine.kt` (`Debloat`, `apply`, `restore`, drift), `Records.kt`, `CleanupTab.kt`, lists in `examples/` (generic plus Samsung, Xiaomi, Oppo/realme/OnePlus, Vivo, Motorola: **unverified**, from a community guide, each package still to be checked on a real phone of that brand; `DebloatTest` checks they load and avoid `lists/protected.txt`) and `lists/`; `cli.py`/`core.py` do the same over USB for Android 7-10.
-**Decisions:** batches of five with a health check and rollback, user 0 only, Remove only for built-in apps, record written as each change applies (ADR 0008). Lists ship in the app (ADR 0002).
-**Tested by:** `EngineTest`, `DebloatTest`, `RealAdbdDebloatTest`; `test_core.py` for the CLI.
+**Where:** `engine/Engine.kt` (`Debloat`, `apply`, `restore`, drift), `engine/History.kt`, `Records.kt`, `CleanupTab.kt`, lists in `examples/` (generic plus Samsung, Xiaomi, Oppo/realme/OnePlus, Vivo, Motorola: **unverified**, from a community guide, each package still to be checked on a real phone of that brand; `DebloatTest` checks they load and avoid `lists/protected.txt`) and `lists/`; `cli.py`/`core.py` do the same over USB for Android 7-10.
+**Decisions:** batches of five with a health check and rollback, user 0 only, Remove only for built-in apps, record written as each change applies (ADR 0008). Lists ship in the app (ADR 0002). History (#43): the cleaner's History chip lists every change held, apps and the mode that is on, newest first, with a Restore each (the existing `restore` and `turnOff`) and Revert all behind a confirm; a failed item keeps its record and is named. Each record line carries its date (` @<millis>` for apps, a `# <millis>` first line for a mode); records from before dates show none. A mode is one item (its settings go back together), not one per setting.
+**Tested by:** `EngineTest`, `DebloatTest`, `HistoryTest`, `RealAdbdDebloatTest`; `test_core.py` for the CLI.
 
 ## Modes: Kiosk and E-reader (2026-10-22, last changed 2026-11-14)
 **What:** one switch per job that changes a few settings and puts the user's own back exactly when turned off, each with its own home screen.
@@ -65,9 +66,16 @@ Template for a new section:
 **What:** E-reader mode's home screen is a library; books open in place. EPUB, TXT, HTML, FB2, CBZ and PDF; bookmarks, highlights with notes, search, read aloud, reading lists and statistics.
 **Where:** `Reader.kt`, `Pdf.kt`; `engine/BookFile.kt`, `Epub.kt`, `Catalog.kt`, `Shelf.kt`, `Tap.kt`, `KoReader.kt`.
 **Decisions:** what the reader remembers lives in the engine behind a `Store`. Formats share one `BookFile` interface. Books are untrusted: chapters, pages, whole-file books and "Open with" copies stop at `MAX_BOOK_BYTES` (64 MB). Full history in `docs/agents/handoff-reader.md`.
+**Export highlights:** the Highlights tab has an "Export highlights" button that shares the book as Markdown text (`exportQuotes` in `Shelf.kt`: title, then each quote with its chapter and note) through the system share sheet. No network code (ADR 0002).
 **Tested by:** `EpubTest`, `BookFileTest` (including the size cap), `ShelfTest`, `CatalogTest`, `TapTest`; the page view and PDF by scripted emulator runs only.
 **Layout (2026-11-17):** pages are `column-count` columns (1, or 2 on wide screens) with equal side padding, and the book's own html/body width, max-width and offsets are overridden so the text stays centred; the chosen font applies to every descendant, and wide tables and code are kept inside their column. A page turn moves by the page's measured width (the html box times the device pixel ratio, a fraction, rounded per page), not the view's width: Chromium rounds the WebView's CSS width up, so on a 1080 px, 2.625 density screen a page is 1082 px and turning by 1080 drifted the text 2 px right on every page. A 1 px end mark after the last page lets the last page (which lacks its right margin, or is one column of two) scroll fully into place, and the page count comes from the page's script, not the scroll range, which learns of the mark late. The library has a compact 40dp search field with the sort and view menu beside it, under the title line.
 **Open:** `Reader.kt` (about 1,100 lines) is to be split (`docs/architecture-plan.md` §4); review items at the end of the handoff.
+
+## Update check (2026-11-19, #46)
+**What:** an opt-in (off by default) check of GitHub's latest release, with a button that opens the release page. Settings > Updates: automatic check (at most daily, never while a mode is on), Check now, last checked, result. No download or install code (option 1 of #46).
+**Where:** `engine/Update.kt` (parse the feed, compare versions, vet the page URL), `app/update/UpdateCheck.kt` (the one HTTPS GET), `SettingsPage.kt`, `MainActivity.onResume` (automatic check).
+**Decisions:** ADR 0010 narrows ADR 0002; the CI network guard allows `update/UpdateCheck.kt`. Options 2 and 3 of #46 are not built (reasons in ADR 0010).
+**Tested by:** `UpdateTest` (fake feed, malformed input, version compare). The network call and Settings rows are not tested on a device.
 
 ## Release (2026-11-05, #15)
 **What:** pushing a version tag builds a signed APK on GitHub Releases.

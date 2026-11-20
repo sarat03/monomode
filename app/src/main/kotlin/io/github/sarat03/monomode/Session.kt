@@ -26,7 +26,7 @@ class Session private constructor(private val ctx: Context, private val transpor
         access(shell).let { a -> a.copy(outsidePlayStore = a.outsidePlayStore.filterNot { it.first.startsWith(ctx.packageName) }) }, // not ourselves
         DeviceFacts(DeviceChecks.deviceAdmins(ctx), DeviceChecks.userCertificates(), DeviceChecks.vpnActive(ctx)),
         ownAdbPort = port,
-    ) { appLabel(ctx, it) }
+    ) { appLabel(ctx, it) }.also { Records.rememberCheck(ctx, it) }
 
     /** Switches Wireless debugging off over this connection, then verifies from the app side. True when verified off. */
     override fun finish(): Boolean {

@@ -5,7 +5,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import java.text.DateFormat
+import java.util.Date
+import monomode.engine.Kind
+import monomode.engine.Profile
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.background
@@ -44,6 +52,17 @@ import io.github.sarat03.monomode.MainActivity.Companion.cleanFilter
 
 /** Uninstall and Disable stay in sight at the bottom while the list scrolls; Restore has its own there. */
 internal fun MainActivity.cleanupBar(): (@Composable () -> Unit)? = when {
+    cleanFilter == 3 -> if (ps.removed.isEmpty() && ps.activeMode == null) null else {
+        {
+            var ask by remember { mutableStateOf(false) }
+            Button({ ask = true }, Modifier.fillMaxWidth().heightIn(min = 56.dp), enabled = ps.busy == null) { Text(getString(R.string.revert_all)) }
+            if (ask) AlertDialog(onDismissRequest = { ask = false },
+                title = { Text(getString(R.string.revert_all_title)) },
+                text = { Text(getString(R.string.revert_all_body, ph.history().size)) },
+                confirmButton = { TextButton({ ask = false; ph.revertAll() }, Modifier.heightIn(min = 48.dp)) { Text(getString(R.string.revert_all)) } },
+                dismissButton = { TextButton({ ask = false }, Modifier.heightIn(min = 48.dp)) { Text(getString(R.string.cancel)) } })
+        }
+    }
     cleanFilter == 2 -> if (ps.removed.isEmpty()) null else {
         { Button({ ph.restore(restorePick.toSet()); restorePick.clear() }, Modifier.fillMaxWidth().heightIn(min = 56.dp), enabled = ps.busy == null && restorePick.isNotEmpty()) { Text(getString(R.string.restore_1x, restorePick.size)) } }
     }
@@ -69,8 +88,10 @@ internal fun MainActivity.CleanupTab() {
         FilterChip(cleanFilter == 0, { cleanFilter = 0 }, { Text(getString(R.string.apps)) })
         FilterChip(cleanFilter == 1, { cleanFilter = 1 }, { Text(getString(R.string.background)) }, enabled = ps.scan != null)
         FilterChip(cleanFilter == 2, { cleanFilter = 2 }, { Text(getString(R.string.removed_1x, ps.removed.size)) })
+        FilterChip(cleanFilter == 3, { cleanFilter = 3 }, { Text(getString(R.string.history)) })
     }
     if (cleanFilter == 2) return RestoreList()
+    if (cleanFilter == 3) return HistoryList()
     val sc = ps.scan
     // only safe apps from the curated list start ticked
     LaunchedEffect(sc) { sc?.let { selected.clear(); selected += ps.entries.filter { e -> e.risk == Risk.SAFE && e.pkg in it.plan.todo }.map { e -> e.pkg } } }
@@ -140,6 +161,32 @@ internal fun MainActivity.RestoreList() {
                 }
                 if (i < group.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
+        }
+    }
+}
+
+/** Every change MonoMode holds, apps and the mode that is on, newest first, each with its own Restore. */
+@Composable
+internal fun MainActivity.HistoryList() {
+    val items = remember(ps.removed, ps.activeMode) { ph.history() }
+    if (items.isEmpty()) return Text(getString(R.string.history_empty), Modifier.padding(8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(getString(R.string.history_intro), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Panel(Modifier.fillMaxWidth()) {
+        items.forEachIndexed { i, item ->
+            val mode = if (item.kind == Kind.MODE) Profile.valueOf(item.id) else null
+            val name = mode?.label ?: label(item.id)
+            Row(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                if (mode == null) AppIcon(item.id)
+                Column(Modifier.weight(1f)) {
+                    Text(if (mode != null) getString(R.string.history_mode, name, item.settings) else name)
+                    val kind = when (item.kind) { Kind.REMOVED -> getString(R.string.uninstalled); Kind.DISABLED -> getString(R.string.disabled); Kind.MODE -> null }
+                    val since = item.at?.let { getString(R.string.history_since, DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(it))) }
+                    Text(listOfNotNull(kind, since).joinToString(" · "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                val desc = getString(R.string.history_restore_1x, name)
+                TextButton({ if (mode != null) ph.turnOff() else ph.restore(setOf(item.id)) }, Modifier.heightIn(min = 48.dp).semantics { contentDescription = desc }, enabled = ps.busy == null) { Text(getString(R.string.history_restore)) }
+            }
+            if (i < items.lastIndex) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
     }
 }

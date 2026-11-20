@@ -7,7 +7,14 @@ import android.provider.MediaStore
 import java.io.File
 import monomode.engine.Debloat
 import monomode.engine.Modes
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import monomode.engine.Finding
 import monomode.engine.Shelf
+import monomode.engine.decodeFindings
+import monomode.engine.encodeFindings
+import monomode.engine.newSince
 
 /** Restore records live in app storage; a copy goes to Downloads so it survives uninstalling the app. */
 object Records {
@@ -31,6 +38,18 @@ object Records {
         override fun get(key: String) = prefs.getString(key, null)
         override fun put(key: String, value: String?) = prefs.edit().putString(key, value).apply()
     })
+
+    /** Remembers the last check's findings in app storage, and which of the current ones are new since then. */
+    fun rememberCheck(ctx: Context, current: List<Finding>) {
+        val prefs = ctx.getSharedPreferences("last_check", Context.MODE_PRIVATE)
+        val before = prefs.getString("findings", null)?.let(::decodeFindings)
+        newFindings = newSince(before, current)
+        prefs.edit().putString("findings", encodeFindings(current)).apply()
+    }
+
+    /** Findings new in the latest check; the Check tab draws a tag on them. */
+    var newFindings: Set<Finding> by mutableStateOf(emptySet())
+        private set
 
     /** Copies [record] to Downloads/MonoMode, one file overwritten each time (empty once everything is restored); no storage permission needed on Android 10+. */
     fun copyToDownloads(ctx: Context, record: File) {

@@ -4,6 +4,12 @@ import android.content.Intent
 import kotlin.concurrent.thread
 import android.content.pm.PackageManager
 import android.net.Uri
+import java.text.DateFormat
+import java.util.Date
+import io.github.sarat03.monomode.update.UpdateCheck
+import monomode.engine.page
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.Switch
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -56,6 +62,32 @@ internal fun MainActivity.SettingsPage() {
     }
     Section(getString(R.string.backups))
     SettingRow(getString(R.string.restore_lists), getString(R.string.a_copy_of_what_was))
+    Section(getString(R.string.updates))
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).toggleable(UpdateCheck.enabled, role = Role.Switch) { UpdateCheck.enable(applicationContext, it); if (it && modes.active == null) UpdateCheck.check(applicationContext) }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f)) {
+            Text(getString(R.string.check_for_updates_automatically), style = MaterialTheme.typography.bodyLarge)
+            Text(getString(R.string.update_check_note), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(UpdateCheck.enabled, null)
+    }
+    val found = UpdateCheck.release
+    SettingRow(getString(R.string.updates), listOf(
+        if (UpdateCheck.last == 0L) getString(R.string.never_checked) else getString(R.string.last_checked, DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(UpdateCheck.last))),
+        when {
+            UpdateCheck.checking -> getString(R.string.checking)
+            UpdateCheck.result == UpdateCheck.Result.AVAILABLE && found != null -> getString(R.string.update_available, found.tag)
+            UpdateCheck.result == UpdateCheck.Result.UP_TO_DATE -> getString(R.string.up_to_date)
+            UpdateCheck.result == UpdateCheck.Result.FAILED -> getString(R.string.could_not_check)
+            else -> ""
+        },
+    ).filter { it.isNotEmpty() }.joinToString("\n")) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton({ UpdateCheck.check(applicationContext) }, enabled = !UpdateCheck.checking) { Text(getString(R.string.check_now)) }
+            // the page URL is built here from the validated tag; the feed's own URL is never used
+            if (UpdateCheck.result == UpdateCheck.Result.AVAILABLE && found != null)
+                OutlinedButton({ runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(found.page(UpdateCheck.REPO)))) } }) { Text(getString(R.string.open_release_page)) }
+        }
+    }
     Section(getString(R.string.about))
     SettingRow(getString(R.string.app_name), getString(R.string.about_version, packageManager.getPackageInfo(packageName, 0).versionName)) {
         OutlinedButton({ startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://github.com/sarat03/monomode"))) }) { Text(getString(R.string.source_code)) }

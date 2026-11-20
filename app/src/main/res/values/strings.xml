@@ -50,6 +50,17 @@
     <string name="restore_lists">Restore lists</string>
     <string name="a_copy_of_what_was">A copy of what was removed is saved in Downloads/MonoMode.</string>
     <string name="about">About</string>
+    <string name="updates">Updates</string>
+    <string name="check_for_updates_automatically">Check for updates automatically</string>
+    <string name="update_check_note">Once a day, never while a mode is on. Asks api.github.com for the latest release, so GitHub sees your IP address and that MonoMode asked. Nothing is downloaded.</string>
+    <string name="check_now">Check now</string>
+    <string name="checking">Checking…</string>
+    <string name="last_checked">Last checked: %1$s</string>
+    <string name="never_checked">Not checked yet</string>
+    <string name="update_available">Update available: %1$s</string>
+    <string name="up_to_date">Up to date</string>
+    <string name="could_not_check">Could not check</string>
+    <string name="open_release_page">Open release page</string>
     <string name="source_code">Source code</string>
     <string name="modes">Modes</string>
     <string name="on">On</string>
@@ -67,6 +78,8 @@
     <string name="everything_else_looks_normal">Everything else looks normal.</string>
     <string name="check">Check</string>
     <string name="check_again">Check again</string>
+    <string name="export_report">Share report as text</string>
+    <string name="new_since_last_check">New</string>
     <string name="needs_a_look">Needs a look</string>
     <string name="using_the_internet">Using the internet</string>
     <string name="built_in_apps">Built-in apps</string>
@@ -198,6 +211,7 @@
     <string name="no_matches">No matches.</string>
     <string name="go_there">Go there</string>
     <string name="highlight">Highlight</string>
+    <string name="export_highlights">Export highlights</string>
     <string name="highlights">Highlights</string>
     <string name="no_highlights_yet">No highlights yet. Hold a finger on a word, adjust the selection, then choose Highlight.</string>
     <string name="note">Note</string>
@@ -297,4 +311,15 @@
     <string name="cleaner_uses_wireless_debugging_to_change">Listing apps needs nothing; removing or disabling uses Wireless debugging for a moment, and MonoMode turns it on and off.</string>
     <string name="pinning_switches_off_wireless_debugging">Pinning also switches off Wireless debugging.</string>
     <string name="app_to_pin">App to pin</string>
+    <string name="history">History</string>
+    <string name="history_empty">MonoMode holds no changes right now.</string>
+    <string name="history_intro">Everything MonoMode changed on this phone and can put back, newest first.</string>
+    <string name="history_since">Since %1$s</string>
+    <string name="history_mode">%1$s mode · %2$d settings changed</string>
+    <string name="history_restore">Restore</string>
+    <string name="history_restore_1x">Restore %1$s</string>
+    <string name="revert_all">Revert all</string>
+    <string name="revert_all_title">Revert all changes?</string>
+    <string name="revert_all_body">Apps come back and the mode is turned off. %1$d changes in all.</string>
+    <string name="cancel">Cancel</string>
 </resources>
