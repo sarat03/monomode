@@ -29,6 +29,7 @@ Template for a new section:
 **What:** a read-only report of what uses the internet and what can reach or control the phone.
 **Where:** `engine/Network.kt` (`/proc/net`), `engine/Access.kt`, `engine/Findings.kt`; `DeviceChecks.kt` reads device admins, certificates and VPN in the app; `CheckTab.kt` draws.
 **Decisions:** findings are `LOOK` or `INFO`, never a verdict. Built-in apps go under a drop-down: their access is usually how Android works.
+**Since last check:** the app keeps the last findings (`Records.rememberCheck`, own SharedPreferences file) and tags findings new since then with "New", matched by level and title because details change (`newSince`; the first check tags nothing). "Share report as text" sends `reportText` through the share sheet; nothing is uploaded by the app.
 **Tested by:** `NetworkTest`, `AccessTest`, `FindingsTest`; `DeviceChecksTest` and `RealAdbdExposureTest` on a device.
 
 ## App cleaner (2026-10-22)
